@@ -1,5 +1,8 @@
 // api/app.js
-const astronomia = require('astronomia'); // 导入整个库
+const {
+  julian, solar, lunar, mercury, venus, mars,
+  jupiter, saturn, uranus, neptune, pluto
+} = require('astronomia');
 
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
@@ -32,22 +35,29 @@ module.exports = (request, response) => {
             parseInt(minute)
         ));
 
-        // 2. 从 Date 对象创建儒略日 (修正：从 astronomia 对象中获取 JulianDay)
-        const jd = astronomia.JulianDay.fromDate(date);
+        // 2. 从 Date 对象创建儒略千年数 (JDE) - 这是库需要的时间格式
+        const jde = new julian.Calendar(date).toJDE();
 
-        // 3. 定义要计算的行星 (修正：从 astronomia 对象中获取 Body)
+        // 3. 定义行星及其对应的计算模块
         const planets = {
-            Sun: astronomia.Body.Sun, Moon: astronomia.Body.Moon, Mercury: astronomia.Body.Mercury, 
-            Venus: astronomia.Body.Venus, Mars: astronomia.Body.Mars, Jupiter: astronomia.Body.Jupiter, 
-            Saturn: astronomia.Body.Saturn, Uranus: astronomia.Body.Uranus, 
-            Neptune: astronomia.Body.Neptune, Pluto: astronomia.Body.Pluto
+            Sun: solar, Moon: lunar, Mercury: mercury, Venus: venus,
+            Mars: mars, Jupiter: jupiter, Saturn: saturn,
+            Uranus: uranus, Neptune: neptune, Pluto: pluto
         };
 
         const planets_data = {};
 
         // 4. 循环计算每个行星的黄道经度
         for (const [name, body] of Object.entries(planets)) {
-            const longitude = body.eclipticLongitude(jd).toFixed(2);
+            let longitude;
+            if (name === 'Sun') {
+                // 太阳的函数名是 apparentLongitude
+                longitude = body.apparentLongitude(jde).toFixed(2);
+            } else {
+                // 其他行星的函数名是 longitude
+                longitude = body.longitude(jde).toFixed(2);
+            }
+            
             planets_data[name] = {
                 sign: getSign(longitude),
                 degree: formatDegree(longitude),
