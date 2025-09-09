@@ -1,10 +1,12 @@
 // api/app.js
 
 // 严格按照库的真实设计，从子目录分别导入所需模块
+const base = require('astronomia/base');
 const julian = require('astronomia/julian');
 const planetposition = require('astronomia/planetposition');
 const solar = require('astronomia/solar');
 const moonposition = require('astronomia/moonposition');
+const data = require('astronomia/data');
 
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
@@ -40,7 +42,7 @@ module.exports = (request, response) => {
         
         const planets_data = {};
 
-        // 2. 使用正确的模块和函数计算太阳位置
+        // 2. 使用正确的模块计算太阳位置
         const sunLon = solar.apparentLongitude(jd);
         planets_data['Sun'] = {
             sign: getSign(sunLon),
@@ -48,7 +50,7 @@ module.exports = (request, response) => {
             longitude: parseFloat(sunLon.toFixed(2))
         };
 
-        // 3. 使用正确的模块和函数计算月亮位置
+        // 3. 使用正确的模块计算月亮位置
         const moonLon = moonposition.position(jd).lon;
         planets_data['Moon'] = {
             sign: getSign(moonLon),
@@ -56,21 +58,26 @@ module.exports = (request, response) => {
             longitude: parseFloat(moonLon.toFixed(2))
         };
 
-        // 4. 定义其他行星及其对应的正确计算函数
+        // 4. 正确初始化行星计算器，并将数据传入
+        const pos = new planetposition.Planet(data);
+
+        // 5. 定义其他行星 (常量从 'base' 模块获取)
         const otherPlanets = {
-            Mercury: planetposition.mercury,
-            Venus: planetposition.venus,
-            Mars: planetposition.mars,
-            Jupiter: planetposition.jupiter,
-            Saturn: planetposition.saturn,
-            Uranus: planetposition.uranus,
-            Neptune: planetposition.neptune
+            Mercury: base.mercury,
+            Venus: base.venus,
+            Mars: base.mars,
+            Jupiter: base.jupiter,
+            Saturn: base.saturn,
+            Uranus: base.uranus,
+            Neptune: base.neptune
         };
 
-        // 5. 循环计算其他行星的位置
-        for (const [name, planetFunc] of Object.entries(otherPlanets)) {
-            // 直接调用以行星命名的函数
-            const longitude = planetFunc(jd);
+        // 6. 循环计算其他行星的位置
+        for (const [name, body] of Object.entries(otherPlanets)) {
+            // 调用正确的 'position' 方法，并从返回的对象中获取 'lon'
+            const result = pos.position(body, jd);
+            const longitude = result.lon;
+            
             planets_data[name] = {
                 sign: getSign(longitude),
                 degree: formatDegree(longitude),
