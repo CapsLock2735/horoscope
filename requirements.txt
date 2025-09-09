@@ -1,3 +1,2 @@
 Flask
-kerykeion==3.1.2
-pydantic
+phem
