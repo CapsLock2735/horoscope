@@ -1,4 +1,7 @@
 {
-  "name": "horoscope-proxy-final-verified",
-  "version": "1.0.0"
+  "name": "horoscope-calculator-final-verified",
+  "version": "1.0.0",
+  "dependencies": {
+    "ephemeris": "^1.2.0"
+  }
 }
