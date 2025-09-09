@@ -1,5 +1,8 @@
-import astrology from 'astrology-js'; // 修正点 1: 使用小写的 astrology 导入整个模块
+import astrology from 'astrology-js';
 import NodeGeocoder from 'node-geocoder';
+
+// 修正点 1: 从导入的对象中，正确地取出 Natal 类
+const Natal = astrology.default;
 
 // --- 配置 ---
 const geocoder = NodeGeocoder({
@@ -35,8 +38,8 @@ function calculateChart(year, month, day, hour, minute, lat, lon, tz) {
         timezone: tz
     };
 
-    // 修正点 2: 正确的调用方式是 astrology.Natal
-    const chart = new astrology.Natal(config); 
+    // 修正点 2: 使用我们正确取出的 Natal 类
+    const chart = new Natal(config); 
     const data = chart.get();
 
     const formattedChart = {};
