@@ -1,7 +1,14 @@
 {
+  "name": "astro-chart-api",
+  "version": "1.0.0",
   "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node app.mjs"
+  },
   "dependencies": {
-    "astrology-js": "^0.6.0",
-    "node-geocoder": "^4.3.0"
+    "express": "^4.19.2",
+    "node-geocoder": "^4.3.0",
+    "circular-natal-horoscope-js": "^3.0.5"
   }
 }
