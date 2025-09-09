@@ -1,4 +1,7 @@
 {
-  "name": "horoscope-proxy-final-verified-corrected",
-  "version": "1.0.0"
+  "name": "horoscope-calculator-final-correct",
+  "version": "1.0.0",
+  "dependencies": {
+    "astronomia": "^3.1.1"
+  }
 }
