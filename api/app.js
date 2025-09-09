@@ -1,9 +1,10 @@
 // api/app.js
 
-// 严格按照官方文档，从子目录分别导入所需模块
+// 严格按照 package.json 的 "exports" 定义，从子目录分别导入所需模块
 const base = require('astronomia/base');
 const julian = require('astronomia/julian');
 const planetposition = require('astronomia/planetposition');
+const data = require('astronomia/data'); // <--- 关键：导入 "data" 这个被导出的模块
 
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
@@ -39,10 +40,10 @@ module.exports = (request, response) => {
         // 2. 从 Date 对象创建儒略日
         const jd = new julian.Calendar(date).toJDE();
 
-        // 3. 初始化行星位置计算器
-        const pos = new planetposition.Planet();
+        // 3. 初始化行星位置计算器，并将完整的 data 对象传入
+        const pos = new planetposition.Planet(data); // <--- 关键：将 data 对象喂给计算器
 
-        // 4. 定义行星 (常量从 'base' 模块获取，而不是 'planetposition')
+        // 4. 定义行星 (常量从 'base' 模块获取)
         const planets = {
             Sun: base.sun,
             Mercury: base.mercury,
