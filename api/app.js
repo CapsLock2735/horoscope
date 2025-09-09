@@ -1,6 +1,6 @@
 // api/app.js
 
-// 严格按照您提供的官方文档，从子目录分别导入所需模块
+// 子目录导入（CJS 入口会走 astronomia 的 .cjs 导出）
 const julian = require('astronomia/julian');
 const planetposition = require('astronomia/planetposition');
 const solar = require('astronomia/solar');
@@ -9,88 +9,101 @@ const data = require('astronomia/data');
 
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
-function getSign(longitude) {
-    return SIGNS[Math.floor(longitude / 30)];
+function radToDeg(rad) {
+  return (rad * 180) / Math.PI;
 }
-
-function formatDegree(longitude) {
-    const signPos = longitude % 30;
-    const deg = Math.floor(signPos);
-    const minute = Math.floor((signPos - deg) * 60);
-    return `${deg}°${String(minute).padStart(2, '0')}'`;
+function norm360(deg) {
+  let x = deg % 360;
+  if (x < 0) x += 360;
+  return x;
+}
+function getSignFromDeg(deg) {
+  const idx = Math.floor(norm360(deg) / 30) % 12;
+  return SIGNS[idx];
+}
+function formatDegreeFromDeg(deg) {
+  const d = norm360(deg);
+  const signPos = d % 30;
+  const whole = Math.floor(signPos);
+  const minute = Math.floor((signPos - whole) * 60);
+  return `${whole}°${String(minute).padStart(2, '0')}'`;
 }
 
 module.exports = (request, response) => {
-    try {
-        const { year, month, day, hour, minute, tz } = request.query;
+  try {
+    const { year, month, day, hour, minute, tz } = request.query;
 
-        if (!year || !month || !day || !hour || !minute || !tz) {
-            return response.status(400).json({ error: "Missing required parameters" });
-        }
-
-        // 1. 创建一个标准的 JavaScript Date 对象 (UTC)
-        const utcHour = parseInt(hour) - parseFloat(tz);
-        const date = new global.Date(Date.UTC(
-            parseInt(year),
-            parseInt(month) - 1, // JS月份从0开始
-            parseInt(day),
-            utcHour,
-            parseInt(minute)
-        ));
-
-        // 2. 从 Date 对象创建儒略天文时 (JDE)
-        const jde = julian.DateToJDE(date);
-        
-        const planets_data = {};
-
-        // 3. 使用 VSOP87 高精度计算太阳位置
-        // 根据您的示例 4，我们需要先创建一个地球的 Planet 实例
-        const earth = new planetposition.Planet(data.vsop87Dearth);
-        // 然后调用 solar 模块的 VSOP87 方法
-        const sunPos = solar.apparentVSOP87(earth, jde);
-        const sunLon = sunPos.lon;
-        planets_data['Sun'] = {
-            sign: getSign(sunLon),
-            degree: formatDegree(sunLon),
-            longitude: parseFloat(sunLon.toFixed(2))
-        };
-
-        // 4. 使用正确的模块计算月亮位置
-        const moonLon = moonposition.position(jde).lon;
-        planets_data['Moon'] = {
-            sign: getSign(moonLon),
-            degree: formatDegree(moonLon),
-            longitude: parseFloat(moonLon.toFixed(2))
-        };
-
-        // 5. 定义其他行星及其对应的 VSOP87 数据集
-        const otherPlanets = {
-            Mercury: data.vsop87Dmercury,
-            Venus: data.vsop87Dvenus,
-            Mars: data.vsop87Dmars,
-            Jupiter: data.vsop87Djupiter,
-            Saturn: data.vsop87Dsaturn,
-            Uranus: data.vsop87Duranus,
-            Neptune: data.vsop87Dneptune
-        };
-
-        // 6. 循环计算其他行星的位置
-        for (const [name, planetData] of Object.entries(otherPlanets)) {
-            const planet = new planetposition.Planet(planetData);
-            const position = planet.position(jde); // 调用 position 方法获取 LBR
-            const longitude = position.l; // L 是黄道经度
-            
-            planets_data[name] = {
-                sign: getSign(longitude),
-                degree: formatDegree(longitude),
-                longitude: parseFloat(longitude.toFixed(2))
-            };
-        }
-
-        response.status(200).json({ planets: planets_data });
-
-    } catch (error) {
-        console.error(error);
-        response.status(500).json({ error: `An internal server error occurred: ${error.message}` });
+    if (
+      year == null || month == null || day == null ||
+      hour == null || minute == null || tz == null
+    ) {
+      return response.status(400).json({ error: "Missing required parameters" });
     }
+
+    // 允许 tz 为浮点（如 8 或 8.0 或 5.5）
+    const tzOffset = parseFloat(tz);
+    if (Number.isNaN(tzOffset)) {
+      return response.status(400).json({ error: "Invalid tz" });
+    }
+
+    // 1) 构造 UTC Date
+    const utcHour = parseInt(hour, 10) - tzOffset;
+    const date = new Date(Date.UTC(
+      parseInt(year, 10),
+      parseInt(month, 10) - 1,
+      parseInt(day, 10),
+      utcHour,
+      parseInt(minute, 10)
+    ));
+
+    // 2) Date -> JDE
+    const jde = julian.DateToJDE(date);
+
+    const planets_data = {};
+
+    // 3) 太阳（VSOP87）
+    const earth = new planetposition.Planet(data.vsop87Dearth);
+    const sunPos = solar.apparentVSOP87(earth, jde); // {lon, lat, range}
+    const sunLonDeg = norm360(radToDeg(sunPos.lon));
+    planets_data['Sun'] = {
+      sign: getSignFromDeg(sunLonDeg),
+      degree: formatDegreeFromDeg(sunLonDeg),
+      longitude: Number(sunLonDeg.toFixed(2))
+    };
+
+    // 4) 月亮（弧度->度）
+    const moonLonDeg = norm360(radToDeg(moonposition.position(jde).lon));
+    planets_data['Moon'] = {
+      sign: getSignFromDeg(moonLonDeg),
+      degree: formatDegreeFromDeg(moonLonDeg),
+      longitude: Number(moonLonDeg.toFixed(2))
+    };
+
+    // 5) 其它行星 VSOP87（注意属性名是 lon 不是 l）
+    const otherPlanets = {
+      Mercury: data.vsop87Dmercury,
+      Venus: data.vsop87Dvenus,
+      Mars: data.vsop87Dmars,
+      Jupiter: data.vsop87Djupiter,
+      Saturn: data.vsop87Dsaturn,
+      Uranus: data.vsop87Duranus,
+      Neptune: data.vsop87Dneptune
+    };
+
+    for (const [name, planetData] of Object.entries(otherPlanets)) {
+      const planet = new planetposition.Planet(planetData);
+      const p = planet.position(jde); // {lon, lat, range}
+      const lonDeg = norm360(radToDeg(p.lon));
+      planets_data[name] = {
+        sign: getSignFromDeg(lonDeg),
+        degree: formatDegreeFromDeg(lonDeg),
+        longitude: Number(lonDeg.toFixed(2))
+      };
+    }
+
+    return response.status(200).json({ planets: planets_data });
+  } catch (error) {
+    console.error(error);
+    return response.status(500).json({ error: `An internal server error occurred: ${error.message}` });
+  }
 };
