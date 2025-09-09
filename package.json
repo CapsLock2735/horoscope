@@ -1,7 +1,4 @@
 {
-  "name": "horoscope-api",
-  "version": "1.0.0",
-  "dependencies": {
-    "astrology-js": "^0.2.1"
-  }
+  "name": "horoscope-proxy-api",
+  "version": "1.0.0"
 }
