@@ -3,6 +3,6 @@
   "dependencies": {
     "astronomia": "^4.2.0",
     "node-geocoder": "^4.3.0",
-    "swe-js": "^2.10.2"
+    "swisseph": "^0.5.17"
   }
 }
