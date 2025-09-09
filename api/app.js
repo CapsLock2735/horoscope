@@ -1,7 +1,9 @@
 // api/app.js
-const { julian, planetposition } = require('astronomia');
-// 修正：根据官方文档，直接从子目录导入 VSOP87 数据
-const vsop87A = require('astronomia/data/vsop87A');
+
+// 严格按照官方文档，从子目录分别导入所需模块
+const base = require('astronomia/base');
+const julian = require('astronomia/julian');
+const planetposition = require('astronomia/planetposition');
 
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
@@ -37,19 +39,19 @@ module.exports = (request, response) => {
         // 2. 从 Date 对象创建儒略日
         const jd = new julian.Calendar(date).toJDE();
 
-        // 3. 初始化行星位置计算器，传入正确加载的 VSOP87 数据
-        const pos = new planetposition.Planet(vsop87A);
+        // 3. 初始化行星位置计算器
+        const pos = new planetposition.Planet();
 
-        // 4. 定义行星
+        // 4. 定义行星 (常量从 'base' 模块获取，而不是 'planetposition')
         const planets = {
-            Sun: planetposition.sun,
-            Mercury: planetposition.mercury,
-            Venus: planetposition.venus,
-            Mars: planetposition.mars,
-            Jupiter: planetposition.jupiter,
-            Saturn: planetposition.saturn,
-            Uranus: planetposition.uranus,
-            Neptune: planetposition.neptune
+            Sun: base.sun,
+            Mercury: base.mercury,
+            Venus: base.venus,
+            Mars: base.mars,
+            Jupiter: base.jupiter,
+            Saturn: base.saturn,
+            Uranus: base.uranus,
+            Neptune: base.neptune
         };
 
         const planets_data = {};
