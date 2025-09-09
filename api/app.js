@@ -1,33 +1,43 @@
 // api/app.js
+
+// Vercel 的主处理函数
 module.exports = async (request, response) => {
   try {
-    // Take all query parameters from the original request (?year=, ?month=, etc.)
-    const queryParams = new URLSearchParams(request.query).toString();
+    // 从 URL 获取星座名称, 例如: /api/app?sign=libra
+    const { sign } = request.query;
 
-    // The external API that we have manually verified is working.
-    const externalApiUrl = `https://ephemeris.onrender.com/v2/planets?${queryParams}`;
+    // 验证参数
+    if (!sign) {
+      return response.status(400).json({ error: "Missing required parameter: sign" });
+    }
 
-    // Call the external API.
-    const apiResponse = await fetch(externalApiUrl);
+    // Aztro API 的地址，它需要 POST 请求
+    const externalApiUrl = `https://aztro.sameerkumar.website/?sign=${sign}&day=today`;
 
+    // 使用内置的 fetch 函数调用外部 API
+    const apiResponse = await fetch(externalApiUrl, {
+      method: 'POST'
+    });
+
+    // 检查外部 API 是否成功返回
     if (!apiResponse.ok) {
       const errorText = await apiResponse.text();
       return response.status(apiResponse.status).json({ 
-        error: "External API failed.",
+        error: "Failed to fetch data from the Aztro API.",
         details: errorText 
       });
     }
 
-    // Get the JSON data.
+    // 获取返回的 JSON 数据
     const data = await apiResponse.json();
 
-    // Send the data back to the user.
-    // Add a CORS header to allow browser access from any domain.
+    // 将数据返回给调用者
+    // 添加 CORS 头，允许任何域名的浏览器访问
     response.setHeader('Access-Control-Allow-Origin', '*');
     response.status(200).json(data);
 
   } catch (error) {
     response.setHeader('Access-Control-Allow-Origin', '*');
-    response.status(500).json({ error: `Internal Server Error: ${error.message}` });
+    response.status(500).json({ error: `An internal server error occurred: ${error.message}` });
   }
 };
