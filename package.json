@@ -1,0 +1,7 @@
+{
+  "name": "horoscope-api",
+  "version": "1.0.0",
+  "dependencies": {
+    "sweph": "^2.0.0"
+  }
+}
