@@ -1,4 +1,4 @@
-import Astrology from 'astrology-js';
+import Natal from 'astrology-js'; // 修正点 1: 直接导入 Natal 类
 import NodeGeocoder from 'node-geocoder';
 
 // --- 配置 ---
@@ -10,6 +10,8 @@ const geocoder = NodeGeocoder({
 // --- 辅助函数 ---
 const SIGNS = ["白羊座","金牛座","双子座","巨蟹座","狮子座","处女座","天秤座","天蝎座","射手座","摩羯座","水瓶座","双鱼座"];
 const formatSign = (signData) => {
+    // 确保 signData 存在
+    if (!signData) return null;
     const deg = Math.floor(signData.normpos % 30);
     const min = Math.floor(((signData.normpos % 30) - deg) * 60);
     return {
@@ -34,14 +36,14 @@ function calculateChart(year, month, day, hour, minute, lat, lon, tz) {
         timezone: tz
     };
 
-    const chart = new Astrology.Natal(config);
-    const data = chart.get(); // 获取计算结果
+    const chart = new Natal(config); // 修正点 2: 直接使用 new Natal()
+    const data = chart.get();
 
     const formattedChart = {};
     
     // 格式化行星数据
     for (const planetName in data.planets) {
-        const key = planetName.charAt(0).toUpperCase() + planetName.slice(1); // 首字母大写
+        const key = planetName.charAt(0).toUpperCase() + planetName.slice(1);
         formattedChart[key] = formatSign(data.planets[planetName]);
     }
 
@@ -76,16 +78,16 @@ export default async (req, res) => {
 
     // 计算当前行运盘
     const now = new Date();
-    const nowUtc = new Date(now.getTime() + (now.getTimezoneOffset() * 60000)); // 获取UTC时间
+    const nowUtc = new Date(now.getTime() + (now.getTimezoneOffset() * 60000));
     const currentChart = calculateChart(
         nowUtc.getFullYear(),
         nowUtc.getMonth() + 1,
         nowUtc.getDate(),
         nowUtc.getHours(),
         nowUtc.getMinutes(),
-        latitude, // 行运盘宫位基于出生地计算
+        latitude,
         longitude,
-        0 // 使用UTC时间
+        0
     );
 
     res.status(200).json({
