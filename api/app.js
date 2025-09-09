@@ -1,5 +1,5 @@
 // api/app.js
-const { Body, JulianDay } = require('astronomia');
+const astronomia = require('astronomia'); // 导入整个库
 
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
@@ -32,14 +32,15 @@ module.exports = (request, response) => {
             parseInt(minute)
         ));
 
-        // 2. 从 Date 对象创建儒略日
-        const jd = JulianDay.fromDate(date);
+        // 2. 从 Date 对象创建儒略日 (修正：从 astronomia 对象中获取 JulianDay)
+        const jd = astronomia.JulianDay.fromDate(date);
 
-        // 3. 定义要计算的行星
+        // 3. 定义要计算的行星 (修正：从 astronomia 对象中获取 Body)
         const planets = {
-            Sun: Body.Sun, Moon: Body.Moon, Mercury: Body.Mercury, Venus: Body.Venus,
-            Mars: Body.Mars, Jupiter: Body.Jupiter, Saturn: Body.Saturn,
-            Uranus: Body.Uranus, Neptune: Body.Neptune, Pluto: Body.Pluto
+            Sun: astronomia.Body.Sun, Moon: astronomia.Body.Moon, Mercury: astronomia.Body.Mercury, 
+            Venus: astronomia.Body.Venus, Mars: astronomia.Body.Mars, Jupiter: astronomia.Body.Jupiter, 
+            Saturn: astronomia.Body.Saturn, Uranus: astronomia.Body.Uranus, 
+            Neptune: astronomia.Body.Neptune, Pluto: astronomia.Body.Pluto
         };
 
         const planets_data = {};
