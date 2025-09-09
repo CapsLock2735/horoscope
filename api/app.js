@@ -1,33 +1,29 @@
 // api/app.js
-export default async function handler(request, response) {
-  // Vercel populates `request.method`. We only want to allow GET.
-  if (request.method !== 'GET') {
-    response.setHeader('Allow', ['GET']);
-    return response.status(405).end(`Method ${request.method} Not Allowed`);
-  }
-
+module.exports = async (request, response) => {
   try {
-    // The request.url property includes the path and query string.
-    // We need to extract just the query string part.
+    // 从原始请求中获取查询字符串
     const queryString = request.url.split('?')[1] || '';
 
-    // The external API with the correct path.
+    // 我们已经验证过可用的外部 API 地址
     const externalApiUrl = `https://ephemeris.onrender.com/planets?${queryString}`;
 
-    // Call the external API.
-    const apiResponse = await fetch(externalApiUrl);
+    // 调用外部 API，并明确指定使用 POST 方法
+    const apiResponse = await fetch(externalApiUrl, {
+      method: 'POST' // <--- 这是唯一的、关键的修改
+    });
 
+    // 检查外部 API 的响应
     if (!apiResponse.ok) {
       const errorText = await apiResponse.text();
-      return response.status(apiResponse.status).json({
+      return response.status(apiResponse.status).json({ 
         error: "External API failed.",
-        details: errorText
+        details: errorText 
       });
     }
 
     const data = await apiResponse.json();
 
-    // Send the data back to the user.
+    // 将成功获取的数据返回给用户
     response.setHeader('Access-Control-Allow-Origin', '*');
     response.status(200).json(data);
 
@@ -35,4 +31,4 @@ export default async function handler(request, response) {
     response.setHeader('Access-Control-Allow-Origin', '*');
     response.status(500).json({ error: `Internal Server Error: ${error.message}` });
   }
-}
+};
