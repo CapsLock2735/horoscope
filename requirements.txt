@@ -1,3 +1,0 @@
-Flask
-phem
-numpy==1.26.4
