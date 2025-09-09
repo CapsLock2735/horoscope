@@ -1,15 +1,19 @@
 // api/app.js
 module.exports = async (request, response) => {
   try {
-    // 从原始请求中获取查询字符串
-    const queryString = request.url.split('?')[1] || '';
+    // 外部 API 的地址，这次是干净的，不带任何参数
+    const externalApiUrl = `https://ephemeris.onrender.com/planets`;
 
-    // 我们已经验证过可用的外部 API 地址
-    const externalApiUrl = `https://ephemeris.onrender.com/planets?${queryString}`;
+    // 从用户的请求中获取查询参数对象, e.g., { dt: '2024-...' }
+    const requestBody = request.query;
 
-    // 调用外部 API，并明确指定使用 POST 方法
+    // 调用外部 API
     const apiResponse = await fetch(externalApiUrl, {
-      method: 'POST' // <--- 这是唯一的、关键的修改
+      method: 'POST', // 明确使用 POST
+      headers: {
+        'Content-Type': 'application/json' // 告诉服务器我们发送的是 JSON 格式的数据
+      },
+      body: JSON.stringify(requestBody) // 将参数对象转换为 JSON 字符串并放入请求正文
     });
 
     // 检查外部 API 的响应
