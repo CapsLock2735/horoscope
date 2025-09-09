@@ -1,10 +1,12 @@
 // api/app.js
 
-// 严格按照 package.json 的 "exports" 定义，从子目录分别导入所需模块
+// 严格按照库的真实设计，从子目录分别导入所需模块
 const base = require('astronomia/base');
 const julian = require('astronomia/julian');
 const planetposition = require('astronomia/planetposition');
-const data = require('astronomia/data'); // <--- 关键：导入 "data" 这个被导出的模块
+const solar = require('astronomia/solar'); // <-- 导入太阳计算模块
+const moonposition = require('astronomia/moonposition'); // <-- 导入月亮计算模块
+const data = require('astronomia/data');
 
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
@@ -27,25 +29,40 @@ module.exports = (request, response) => {
             return response.status(400).json({ error: "Missing required parameters" });
         }
 
-        // 1. 创建一个标准的 JavaScript Date 对象 (UTC)
+        // 1. 创建 UTC 时间的儒略日
         const utcHour = parseInt(hour) - parseFloat(tz);
         const date = new global.Date(Date.UTC(
             parseInt(year),
-            parseInt(month) - 1, // JS月份从0开始
+            parseInt(month) - 1,
             parseInt(day),
             utcHour,
             parseInt(minute)
         ));
-
-        // 2. 从 Date 对象创建儒略日
         const jd = new julian.Calendar(date).toJDE();
 
-        // 3. 初始化行星位置计算器，并将完整的 data 对象传入
-        const pos = new planetposition.Planet(data); // <--- 关键：将 data 对象喂给计算器
+        // 2. 初始化行星位置计算器 (仅用于行星)
+        const pos = new planetposition.Planet(data);
+        
+        const planets_data = {};
 
-        // 4. 定义行星 (常量从 'base' 模块获取)
-        const planets = {
-            Sun: base.sun,
+        // 3. 使用正确的模块计算太阳位置
+        const sunLon = solar.apparentLongitude(jd).toFixed(2);
+        planets_data['Sun'] = {
+            sign: getSign(sunLon),
+            degree: formatDegree(sunLon),
+            longitude: parseFloat(sunLon)
+        };
+
+        // 4. 使用正确的模块计算月亮位置
+        const moonLon = moonposition.position(jd).lon.toFixed(2);
+        planets_data['Moon'] = {
+            sign: getSign(moonLon),
+            degree: formatDegree(moonLon),
+            longitude: parseFloat(moonLon)
+        };
+
+        // 5. 定义其他行星
+        const otherPlanets = {
             Mercury: base.mercury,
             Venus: base.venus,
             Mars: base.mars,
@@ -55,12 +72,9 @@ module.exports = (request, response) => {
             Neptune: base.neptune
         };
 
-        const planets_data = {};
-
-        // 5. 循环计算每个行星的黄道经度
-        for (const [name, body] of Object.entries(planets)) {
+        // 6. 循环计算其他行星的位置
+        for (const [name, body] of Object.entries(otherPlanets)) {
             const longitude = pos.eclipticLongitude(body, jd).toFixed(2);
-            
             planets_data[name] = {
                 sign: getSign(longitude),
                 degree: formatDegree(longitude),
