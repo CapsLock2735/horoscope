@@ -1,12 +1,7 @@
 // api/app.js
 
-// 严格按照库的真实设计，从子目录分别导入所需模块
-const base = require('astronomia/base');
-const julian = require('astronomia/julian');
-const planetposition = require('astronomia/planetposition');
-const solar = require('astronomia/solar');
-const moonposition = require('astronomia/moonposition');
-const data = require('astronomia/data');
+// 严格按照官方测试文件，从根 index 解构出所需模块
+const { base, julian, planetposition, solar, moonposition, data } = require('astronomia');
 
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
@@ -33,7 +28,7 @@ module.exports = (request, response) => {
         const utcHour = parseInt(hour) - parseFloat(tz);
         const date = new global.Date(Date.UTC(
             parseInt(year),
-            parseInt(month) - 1,
+            parseInt(month) - 1, // JS月份从0开始
             parseInt(day),
             utcHour,
             parseInt(minute)
@@ -58,7 +53,7 @@ module.exports = (request, response) => {
             longitude: parseFloat(moonLon.toFixed(2))
         };
 
-        // 4. 正确初始化行星计算器，并将数据传入
+        // 4. 正确初始化行星计算器
         const pos = new planetposition.Planet(data);
 
         // 5. 定义其他行星 (常量从 'base' 模块获取)
@@ -74,7 +69,6 @@ module.exports = (request, response) => {
 
         // 6. 循环计算其他行星的位置
         for (const [name, body] of Object.entries(otherPlanets)) {
-            // 调用正确的 'position' 方法，并从返回的对象中获取 'lon'
             const result = pos.position(body, jd);
             const longitude = result.lon;
             
