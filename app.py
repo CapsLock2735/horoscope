@@ -1,6 +1,6 @@
 # 导入所需的库
 from flask import Flask, request, jsonify
-from kerykeion import KrInstance, KerykeionError
+from kerykeion import Kerykeion, KerykeionError
 
 # 初始化 Flask 应用
 app = Flask(__name__)
@@ -25,7 +25,7 @@ def get_natal_chart():
         
         # Kerykeion 的一个强大之处在于，它能自动处理城市名到经纬度和时区的转换
         # 创建星盘实例
-        person = KrInstance(name, year, month, day, hour, minute, city=city)
+        person = Kerykeion(name, year, month, day, hour, minute, city=city)
 
         # person.data 包含了所有星盘信息的字典，jsonify会把它转换成标准的JSON响应
         return jsonify(person.data)
@@ -47,4 +47,5 @@ def home():
 
 # 这段代码是为了本地测试，Vercel部署时不会执行
 if __name__ == '__main__':
+
     app.run(debug=True)
