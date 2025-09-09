@@ -1,6 +1,5 @@
 {
-  "name": "horoscope-calculator-final-correct",
-  "version": "1.0.0",
+  "type": "module",
   "dependencies": {
     "astronomia": "^4.2.0"
   }
