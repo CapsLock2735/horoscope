@@ -1,5 +1,5 @@
 // api/app.js
-const sweph = require('sweph');
+const sweph = require('sweph-js');
 
 // 星座列表
 const SIGNS = [
