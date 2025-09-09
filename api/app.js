@@ -1,12 +1,10 @@
 // api/app.js
 
 // 严格按照库的真实设计，从子目录分别导入所需模块
-const base = require('astronomia/base');
 const julian = require('astronomia/julian');
 const planetposition = require('astronomia/planetposition');
-const solar = require('astronomia/solar'); // <-- 导入太阳计算模块
-const moonposition = require('astronomia/moonposition'); // <-- 导入月亮计算模块
-const data = require('astronomia/data');
+const solar = require('astronomia/solar');
+const moonposition = require('astronomia/moonposition');
 
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
@@ -39,46 +37,44 @@ module.exports = (request, response) => {
             parseInt(minute)
         ));
         const jd = new julian.Calendar(date).toJDE();
-
-        // 2. 初始化行星位置计算器 (仅用于行星)
-        const pos = new planetposition.Planet(data);
         
         const planets_data = {};
 
-        // 3. 使用正确的模块计算太阳位置
-        const sunLon = solar.apparentLongitude(jd).toFixed(2);
+        // 2. 使用正确的模块和函数计算太阳位置
+        const sunLon = solar.apparentLongitude(jd);
         planets_data['Sun'] = {
             sign: getSign(sunLon),
             degree: formatDegree(sunLon),
-            longitude: parseFloat(sunLon)
+            longitude: parseFloat(sunLon.toFixed(2))
         };
 
-        // 4. 使用正确的模块计算月亮位置
-        const moonLon = moonposition.position(jd).lon.toFixed(2);
+        // 3. 使用正确的模块和函数计算月亮位置
+        const moonLon = moonposition.position(jd).lon;
         planets_data['Moon'] = {
             sign: getSign(moonLon),
             degree: formatDegree(moonLon),
-            longitude: parseFloat(moonLon)
+            longitude: parseFloat(moonLon.toFixed(2))
         };
 
-        // 5. 定义其他行星
+        // 4. 定义其他行星及其对应的正确计算函数
         const otherPlanets = {
-            Mercury: base.mercury,
-            Venus: base.venus,
-            Mars: base.mars,
-            Jupiter: base.jupiter,
-            Saturn: base.saturn,
-            Uranus: base.uranus,
-            Neptune: base.neptune
+            Mercury: planetposition.mercury,
+            Venus: planetposition.venus,
+            Mars: planetposition.mars,
+            Jupiter: planetposition.jupiter,
+            Saturn: planetposition.saturn,
+            Uranus: planetposition.uranus,
+            Neptune: planetposition.neptune
         };
 
-        // 6. 循环计算其他行星的位置
-        for (const [name, body] of Object.entries(otherPlanets)) {
-            const longitude = pos.eclipticLongitude(body, jd).toFixed(2);
+        // 5. 循环计算其他行星的位置
+        for (const [name, planetFunc] of Object.entries(otherPlanets)) {
+            // 直接调用以行星命名的函数
+            const longitude = planetFunc(jd);
             planets_data[name] = {
                 sign: getSign(longitude),
                 degree: formatDegree(longitude),
-                longitude: parseFloat(longitude)
+                longitude: parseFloat(longitude.toFixed(2))
             };
         }
 
