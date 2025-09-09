@@ -15,6 +15,6 @@
   "dependencies": {
     "express": "^4.19.2",
     "node-geocoder": "^4.3.0",
-    "astronomy-engine": "^2.5.3"
+    "astronomy-engine": "2.2.1"
   }
 }
