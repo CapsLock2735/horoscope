@@ -1,14 +1,20 @@
 {
   "name": "astro-chart-api",
   "version": "1.0.0",
+  "description": "Serverless API to return natal and transit chart data for AI analysis",
   "type": "module",
-  "private": true,
   "scripts": {
-    "start": "node app.mjs"
+    "start": "node app.js"
   },
+  "keywords": [
+    "Astrology",
+    "API",
+    "serverless"
+  ],
+  "license": "MIT",
   "dependencies": {
     "express": "^4.19.2",
     "node-geocoder": "^4.3.0",
-    "circular-natal-horoscope-js": "^3.0.5"
+    "astronomy-engine": "^2.5.3"
   }
 }
