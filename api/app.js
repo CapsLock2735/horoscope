@@ -1,38 +1,63 @@
 // api/app.js
-module.exports = async (request, response) => {
-  try {
-    // 外部 API 的地址，这次是干净的，不带任何参数
-    const externalApiUrl = `https://ephemeris.onrender.com/planets`;
+const { Body, JulianDay } = require('astronomia');
 
-    // 从用户的请求中获取查询参数对象, e.g., { dt: '2024-...' }
-    const requestBody = request.query;
+const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
-    // 调用外部 API
-    const apiResponse = await fetch(externalApiUrl, {
-      method: 'POST', // 明确使用 POST
-      headers: {
-        'Content-Type': 'application/json' // 告诉服务器我们发送的是 JSON 格式的数据
-      },
-      body: JSON.stringify(requestBody) // 将参数对象转换为 JSON 字符串并放入请求正文
-    });
+function getSign(longitude) {
+    return SIGNS[Math.floor(longitude / 30)];
+}
 
-    // 检查外部 API 的响应
-    if (!apiResponse.ok) {
-      const errorText = await apiResponse.text();
-      return response.status(apiResponse.status).json({ 
-        error: "External API failed.",
-        details: errorText 
-      });
+function formatDegree(longitude) {
+    const signPos = longitude % 30;
+    const deg = Math.floor(signPos);
+    const minute = Math.floor((signPos - deg) * 60);
+    return `${deg}°${String(minute).padStart(2, '0')}'`;
+}
+
+module.exports = (request, response) => {
+    try {
+        const { year, month, day, hour, minute, tz } = request.query;
+
+        if (!year || !month || !day || !hour || !minute || !tz) {
+            return response.status(400).json({ error: "Missing required parameters" });
+        }
+
+        // 1. 创建一个标准的 JavaScript Date 对象 (UTC)
+        const utcHour = parseInt(hour) - parseFloat(tz);
+        const date = new global.Date(Date.UTC(
+            parseInt(year),
+            parseInt(month) - 1, // JS月份从0开始
+            parseInt(day),
+            utcHour,
+            parseInt(minute)
+        ));
+
+        // 2. 从 Date 对象创建儒略日
+        const jd = JulianDay.fromDate(date);
+
+        // 3. 定义要计算的行星
+        const planets = {
+            Sun: Body.Sun, Moon: Body.Moon, Mercury: Body.Mercury, Venus: Body.Venus,
+            Mars: Body.Mars, Jupiter: Body.Jupiter, Saturn: Body.Saturn,
+            Uranus: Body.Uranus, Neptune: Body.Neptune, Pluto: Body.Pluto
+        };
+
+        const planets_data = {};
+
+        // 4. 循环计算每个行星的黄道经度
+        for (const [name, body] of Object.entries(planets)) {
+            const longitude = body.eclipticLongitude(jd).toFixed(2);
+            planets_data[name] = {
+                sign: getSign(longitude),
+                degree: formatDegree(longitude),
+                longitude: parseFloat(longitude)
+            };
+        }
+
+        response.status(200).json({ planets: planets_data });
+
+    } catch (error) {
+        console.error(error);
+        response.status(500).json({ error: `An internal server error occurred: ${error.message}` });
     }
-
-    const data = await apiResponse.json();
-
-    // 将成功获取的数据返回给用户
-    response.setHeader('Access-Control-Allow-Origin', '*');
-    response.status(200).json(data);
-
-  } catch (error) {
-    response.setHeader('Access-Control-Allow-Origin', '*');
-    response.status(500).json({ error: `Internal Server Error: ${error.message}` });
-  }
 };
