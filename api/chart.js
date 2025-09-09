@@ -1,5 +1,5 @@
 import NodeGeocoder from 'node-geocoder';
-import Astronomy from 'astronomy-engine';
+import * as Astronomy from 'astronomy-engine';
 
 const geocoder = NodeGeocoder({
   provider: 'opencage',
