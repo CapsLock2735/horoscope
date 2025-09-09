@@ -1,5 +1,5 @@
 // api/app.js
-const ephemeris = require('ephemeris-moshier');
+const { Ephemeris, Body, Time } = require('@ouranos/ephemeris');
 
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
@@ -14,8 +14,7 @@ function formatDegree(longitude) {
     return `${deg}°${String(minute).padStart(2, '0')}'`;
 }
 
-// Vercel handler
-module.exports = (request, response) => {
+module.exports = async (request, response) => {
     try {
         const { year, month, day, hour, minute, tz } = request.query;
 
@@ -23,35 +22,35 @@ module.exports = (request, response) => {
             return response.status(400).json({ error: "Missing required parameters: year, month, day, hour, minute, tz" });
         }
 
-        // 1. 将本地时间转换为UTC儒略日
-        const localDate = new Date(
-            `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`
-        );
-        
-        // 应用时区偏移，得到UTC时间
-        // 注意：JavaScript的getTimezoneOffset返回的是分钟，且符号相反
-        // 我们直接使用用户传入的tz
-        const utcHour = parseInt(hour) - parseFloat(tz);
-        const julianDayUTC = ephemeris.jd.from_gregorian(parseInt(year), parseInt(month), parseInt(day) + (utcHour / 24) + (parseInt(minute) / 1440));
+        // 创建时间对象，注意月份是从 1 开始的
+        const time = new Time({
+            year: parseInt(year),
+            month: parseInt(month),
+            day: parseInt(day),
+            hours: parseInt(hour),
+            minutes: parseInt(minute),
+            seconds: 0,
+            timezone: parseFloat(tz)
+        });
 
-        // 2. 定义要计算的行星
-        const planetsToCalc = {
-            Sun: 'sun', Moon: 'moon', Mercury: 'mercury', Venus: 'venus',
-            Mars: 'mars', Jupiter: 'jupiter', Saturn: 'saturn',
-            Uranus: 'uranus', Neptune: 'neptune', Pluto: 'pluto'
-        };
+        // 初始化星历表
+        const ephemeris = new Ephemeris({ time });
+        
+        // 定义要计算的行星
+        const bodies = [
+            Body.SUN, Body.MOON, Body.MERCURY, Body.VENUS, Body.MARS,
+            Body.JUPITER, Body.SATURN, Body.URANUS, Body.NEPTUNE, Body.PLUTO
+        ];
 
         const planets_data = {};
 
-        // 3. 循环计算每个行星的位置
-        for (const [name, key] of Object.entries(planetsToCalc)) {
-            const result = ephemeris.getPlanet(key, julianDayUTC);
-            if (result.error) {
-                throw new Error(`Failed to calculate for ${name}: ${result.error}`);
-            }
-            
-            // 结果是黄道坐标 (ecliptic coordinates)
-            const longitude = result.ecliptic.l;
+        // 异步计算所有行星的位置
+        const results = await ephemeris.getBodies(bodies);
+
+        for (const key in results) {
+            // key 的格式是 'sun', 'moon' 等
+            const name = key.charAt(0).toUpperCase() + key.slice(1);
+            const longitude = results[key].longitude;
             
             planets_data[name] = {
                 sign: getSign(longitude),
@@ -67,6 +66,7 @@ module.exports = (request, response) => {
         response.status(200).json(chart_data);
 
     } catch (error) {
+        console.error(error); // 在 Vercel 日志中打印详细错误
         response.status(500).json({ error: `An internal server error occurred: ${error.message}` });
     }
 };
