@@ -1,8 +1,7 @@
 // api/app.js
-const { julian, planetposition, data } = require('astronomia');
-
-// 从 data 模块中加载 VSOP87 数据集
-const { vsop87A } = data;
+const { julian, planetposition } = require('astronomia');
+// 修正：根据官方文档，直接从子目录导入 VSOP87 数据
+const vsop87A = require('astronomia/data/vsop87A');
 
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
@@ -38,12 +37,12 @@ module.exports = (request, response) => {
         // 2. 从 Date 对象创建儒略日
         const jd = new julian.Calendar(date).toJDE();
 
-        // 3. 初始化行星位置计算器，传入 VSOP87 数据
+        // 3. 初始化行星位置计算器，传入正确加载的 VSOP87 数据
         const pos = new planetposition.Planet(vsop87A);
 
-        // 4. 定义行星 (注意：这个库不计算月亮和冥王星)
+        // 4. 定义行星
         const planets = {
-            Sun: planetposition.sun, // 太阳有特殊的方法
+            Sun: planetposition.sun,
             Mercury: planetposition.mercury,
             Venus: planetposition.venus,
             Mars: planetposition.mars,
@@ -57,7 +56,6 @@ module.exports = (request, response) => {
 
         // 5. 循环计算每个行星的黄道经度
         for (const [name, body] of Object.entries(planets)) {
-            // 调用 eclipticLongitude 方法计算位置
             const longitude = pos.eclipticLongitude(body, jd).toFixed(2);
             
             planets_data[name] = {
