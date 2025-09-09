@@ -1,8 +1,8 @@
 // api/app.js
-const {
-  julian, solar, lunar, mercury, venus, mars,
-  jupiter, saturn, uranus, neptune, pluto
-} = require('astronomia');
+const { julian, planetposition, data } = require('astronomia');
+
+// 从 data 模块中加载 VSOP87 数据集
+const { vsop87A } = data;
 
 const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 
@@ -35,28 +35,30 @@ module.exports = (request, response) => {
             parseInt(minute)
         ));
 
-        // 2. 从 Date 对象创建儒略千年数 (JDE) - 这是库需要的时间格式
-        const jde = new julian.Calendar(date).toJDE();
+        // 2. 从 Date 对象创建儒略日
+        const jd = new julian.Calendar(date).toJDE();
 
-        // 3. 定义行星及其对应的计算模块
+        // 3. 初始化行星位置计算器，传入 VSOP87 数据
+        const pos = new planetposition.Planet(vsop87A);
+
+        // 4. 定义行星 (注意：这个库不计算月亮和冥王星)
         const planets = {
-            Sun: solar, Moon: lunar, Mercury: mercury, Venus: venus,
-            Mars: mars, Jupiter: jupiter, Saturn: saturn,
-            Uranus: uranus, Neptune: neptune, Pluto: pluto
+            Sun: planetposition.sun, // 太阳有特殊的方法
+            Mercury: planetposition.mercury,
+            Venus: planetposition.venus,
+            Mars: planetposition.mars,
+            Jupiter: planetposition.jupiter,
+            Saturn: planetposition.saturn,
+            Uranus: planetposition.uranus,
+            Neptune: planetposition.neptune
         };
 
         const planets_data = {};
 
-        // 4. 循环计算每个行星的黄道经度
+        // 5. 循环计算每个行星的黄道经度
         for (const [name, body] of Object.entries(planets)) {
-            let longitude;
-            if (name === 'Sun') {
-                // 太阳的函数名是 apparentLongitude
-                longitude = body.apparentLongitude(jde).toFixed(2);
-            } else {
-                // 其他行星的函数名是 longitude
-                longitude = body.longitude(jde).toFixed(2);
-            }
+            // 调用 eclipticLongitude 方法计算位置
+            const longitude = pos.eclipticLongitude(body, jd).toFixed(2);
             
             planets_data[name] = {
                 sign: getSign(longitude),
