@@ -1,8 +1,7 @@
 {
   "type": "module",
   "dependencies": {
-    "astronomia": "^4.2.0",
-    "node-geocoder": "^4.3.0",
-    "swisseph": "^0.5.17"
+    "astrology-js": "^0.6.0",
+    "node-geocoder": "^4.3.0"
   }
 }
