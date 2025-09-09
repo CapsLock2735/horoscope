@@ -1,4 +1,7 @@
 {
-  "name": "horoscope-proxy-api",
-  "version": "1.0.0"
+  "name": "horoscope-calculator-api",
+  "version": "1.0.0",
+  "dependencies": {
+    "ephemeris-moshier": "^1.0.2"
+  }
 }
