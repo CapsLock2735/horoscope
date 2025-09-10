@@ -1,22 +1,32 @@
 import NodeGeocoder from 'node-geocoder';
 import julian from 'astronomia/julian';
+import sidereal from 'astronomia/sidereal';
 import { Planet } from 'astronomia/planetposition';
 import solar from 'astronomia/solar';
 import moonposition from 'astronomia/moonposition';
+import coord from 'astronomia/coord';
 import vsop87Dearth from 'astronomia/data/vsop87Dearth';
+import vsop87Bearth from 'astronomia/data/vsop87Bearth';
 import vsop87Dmercury from 'astronomia/data/vsop87Dmercury';
 import vsop87Dvenus from 'astronomia/data/vsop87Dvenus';
 import vsop87Dmars from 'astronomia/data/vsop87Dmars';
 import vsop87Djupiter from 'astronomia/data/vsop87Djupiter';
 import vsop87Dsaturn from 'astronomia/data/vsop87Dsaturn';
-import vsop87Duranus from 'astronomia/data/vsop87Duranus';
-import vsop87Dneptune from 'astronomia/data/vsop87Dneptune';
+import vsop87Buranus from 'astronomia/data/vsop87Buranus';
+import vsop87Bneptune from 'astronomia/data/vsop87Bneptune';
 // import { siderealTime, ecliptic, horizon } from 'astronomia/coordinate';
 
-const geocoder = NodeGeocoder({
-  provider: 'opencage',
-  apiKey: process.env.GEOCODER_API_KEY
-});
+// 延迟创建 geocoder 以避免在无 API Key 的环境下初始化报错
+let geocoder = null;
+function getGeocoder() {
+  if (!geocoder) {
+    geocoder = NodeGeocoder({
+      provider: 'opencage',
+      apiKey: process.env.GEOCODER_API_KEY
+    });
+  }
+  return geocoder;
+}
 
 const SIGNS = ["白羊座","金牛座","双子座","巨蟹座","狮子座","处女座","天秤座","天蝎座","射手座","摩羯座","水瓶座","双鱼座"];
 const SIGNS_EN = ["Aries","Taurus","Gemini","Cancer","Leo","Virgo","Libra","Scorpio","Sagittarius","Capricorn","Aquarius","Pisces"];
@@ -81,8 +91,9 @@ function calculatePlanets(jde) {
     Mars: vsop87Dmars,
     Jupiter: vsop87Djupiter, 
     Saturn: vsop87Dsaturn, 
-    Uranus: vsop87Duranus, 
-    Neptune: vsop87Dneptune
+    // 注意：Uranus/Neptune 使用 VSOP87B（J2000 章动前黄道）以避免 D 数据集中 L 分量为 0 的问题
+    Uranus: vsop87Buranus,
+    Neptune: vsop87Bneptune
   };
   
   // 地球的日心位置（黄道球坐标 -> 直角坐标）
@@ -92,7 +103,8 @@ function calculatePlanets(jde) {
   for (const [name, ds] of Object.entries(datasets)) {
     try {
       const planet = new Planet(ds);
-      // VSOP87 返回行星的日心黄道球坐标（日期黄道）
+      // VSOP87 返回行星的日心黄道球坐标
+      // 对于 B 数据（J2000 章动前黄道），position() 会岁差到日期黄道；对 D 数据直接返回日期黄道
       const pHelio = planet.position(jde);
       // 转换为直角坐标
       const pRect = eclipticSphericalToRectangular(pHelio.lon, pHelio.lat, pHelio.range);
@@ -110,7 +122,7 @@ function calculatePlanets(jde) {
           longitude: Number(lonDeg.toFixed(2)) 
         };
       } else {
-        console.error(`Invalid position data for ${name}:`, pos);
+        console.error(`Invalid position data for ${name}:`, geo);
         out[name] = { 
           sign: "白羊座", 
           signEn: "Aries",
@@ -161,36 +173,83 @@ function nutationInObliquityArcsec(T) {
 
 // 计算格林威治视恒星时（度）
 function apparentSiderealTimeDeg(jdUT) {
-  const T = (jdUT - 2451545.0) / 36525.0;
-  const gmst = 280.46061837 + 360.98564736629 * (jdUT - 2451545.0) + 0.000387933 * T * T - T * T * T / 38710000.0;
-  const eps0 = meanObliquityDeg(T);
-  const dPsi = nutationInLongitudeArcsec(T); // arcsec
-  const eps = eps0 + nutationInObliquityArcsec(T) / 3600.0; // deg
-  const eqEqDeg = (dPsi * Math.cos(degToRad(eps))) / 3600.0; // deg
-  return norm360(gmst + eqEqDeg);
+  // 使用 astronomia 的视恒星时（单位：秒）并转换为度
+  const s = sidereal.apparent(jdUT); // seconds of time in [0, 86400)
+  const deg = (s / 240); // 86400s -> 360°
+  return norm360(deg);
 }
 
 function calculateAscMc(utcDate, latitude, longitude) {
   // 计算本地视恒星时（度）
   const jdUT = dateToJulianDayUTC(utcDate);
   const gast = apparentSiderealTimeDeg(jdUT);
-  const lst = norm360(gast + longitude);
-  
+  const lstDeg = norm360(gast + longitude);
+
   // 计算黄赤交角（真黄赤交角）
   const T = (jdUT - 2451545.0) / 36525.0;
   const obliquity = meanObliquityDeg(T) + nutationInObliquityArcsec(T) / 3600.0;
-  
-  // 计算 MC（中天）
-  const lstRad = degToRad(lst);
-  const oblRad = degToRad(obliquity);
-  const mcLon = norm360(radToDeg(Math.atan2(Math.sin(lstRad), Math.cos(lstRad) * Math.cos(oblRad))));
-  
-  // 计算 ASC（上升点）
-  const latRad = degToRad(latitude);
-  const ascLon = norm360(radToDeg(Math.atan2(
-    -Math.cos(lstRad),
-    Math.sin(oblRad) * Math.tan(latRad) + Math.cos(oblRad) * Math.sin(lstRad)
-  )));
+
+  // 采用数值方法：在黄道上搜索地平高度为 0 的交点，并选取东方（方位角 < 180°）者为 ASC
+  const lst = degToRad(lstDeg);
+  const eps = degToRad(obliquity);
+  const phi = degToRad(latitude);
+
+  function altitudeForLambda(lamRad) {
+    const eq = new coord.Ecliptic(lamRad, 0).toEquatorial(eps);
+    const H = lst - eq.ra;
+    const alt = Math.asin(Math.sin(phi) * Math.sin(eq.dec) + Math.cos(phi) * Math.cos(eq.dec) * Math.cos(H));
+    return alt;
+  }
+
+  function azimuthForLambda(lamRad) {
+    const eq = new coord.Ecliptic(lamRad, 0).toEquatorial(eps);
+    const H = lst - eq.ra;
+    const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(eq.dec) * Math.cos(phi));
+    return norm360(radToDeg(az));
+  }
+
+  // 扫描 0..360° 找到两个过零区间
+  const crossings = [];
+  let prevLam = 0;
+  let prevAlt = altitudeForLambda(0);
+  const steps = 720; // 0.5° 步长
+  for (let i = 1; i <= steps; i++) {
+    const lam = (i * 2 * Math.PI) / steps;
+    const alt = altitudeForLambda(lam);
+    if (alt === 0 || (alt > 0) !== (prevAlt > 0)) {
+      crossings.push([prevLam, lam]);
+      if (crossings.length === 2) break;
+    }
+    prevLam = lam;
+    prevAlt = alt;
+  }
+  // 二分逼近
+  function refineInterval(a, b) {
+    let fa = altitudeForLambda(a);
+    for (let j = 0; j < 40; j++) {
+      const m = 0.5 * (a + b);
+      const fm = altitudeForLambda(m);
+      if ((fa > 0) !== (fm > 0)) { b = m; } else { a = m; fa = fm; }
+    }
+    return 0.5 * (a + b);
+  }
+  let ascLon;
+  if (crossings.length > 0) {
+    const roots = crossings.map(([a, b]) => refineInterval(a, b));
+    // 选择东方交点（在 Meeus 约定下：方位角 > 180°）
+    const az0 = azimuthForLambda(roots[0]);
+    const cand = az0 > 180 ? roots[0] : (roots[1] ?? roots[0]);
+    ascLon = norm360(radToDeg(cand));
+  } else {
+    // 回退到解析公式（极端情况下）
+    ascLon = norm360(radToDeg(Math.atan2(
+      -Math.cos(lst),
+      Math.sin(eps) * Math.tan(phi) + Math.cos(eps) * Math.sin(lst)
+    )));
+  }
+
+  // MC（中天）维持原公式
+  const mcLon = norm360(radToDeg(Math.atan2(Math.sin(lst), Math.cos(lst) * Math.cos(eps))));
 
   return {
     Ascendant: {
@@ -281,7 +340,7 @@ export default async function handler(req, res) {
     const { year, month, day, hour, minute, city, country, tz } = req.query ?? req.body ?? {};
     
     // 参数校验
-    const required = { year, month, day, hour, minute, city, country, tz };
+    const required = { year, month, day, hour, minute, tz };
     for (const [k, v] of Object.entries(required)) {
       if (v == null || `${v}`.trim() === '') {
         return res.status(400).json({ error: `Missing required parameter: ${k}` });
@@ -291,12 +350,27 @@ export default async function handler(req, res) {
     const tzOffset = parseFloat(tz);
     if (Number.isNaN(tzOffset)) return res.status(400).json({ error: 'Invalid tz format' });
 
-    // 地理编码
-    const geo = await geocoder.geocode(`${city}, ${country}`);
-    if (!geo || geo.length === 0) {
-      return res.status(400).json({ error: 'Could not find coordinates for the specified location.' });
+    // 支持直接传入坐标以便无 API Key 调试：lat/lon 优先生效
+    let { lat, lon } = req.query ?? req.body ?? {};
+    let latitude;
+    let longitude;
+    if (lat != null && lon != null && `${lat}`.trim() !== '' && `${lon}`.trim() !== '') {
+      latitude = parseFloat(lat);
+      longitude = parseFloat(lon);
+      if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+        return res.status(400).json({ error: 'Invalid lat/lon format' });
+      }
+    } else {
+      // 地理编码
+      if (!city || !country) {
+        return res.status(400).json({ error: 'Missing required parameter: city or country' });
+      }
+      const geo = await getGeocoder().geocode(`${city}, ${country}`);
+      if (!geo || geo.length === 0) {
+        return res.status(400).json({ error: 'Could not find coordinates for the specified location.' });
+      }
+      ({ latitude, longitude } = geo[0]);
     }
-    const { latitude, longitude } = geo[0];
 
     // 本命盘
     const natal = buildChart(year, month, day, hour, minute, latitude, longitude, tzOffset);
