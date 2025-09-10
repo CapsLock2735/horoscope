@@ -97,12 +97,9 @@ function calculatePlanets(jde) {
 function calculateAscMc(jde, latitude, longitude) {
   // 更准确的 ASC/MC 计算
   
-  // 计算儒略日对应的 UTC 时间
-  const date = julian.JDEToDate(jde);
-  
   // 计算从 J2000.0 开始的天数
   const j2000 = new Date('2000-01-01T12:00:00Z');
-  const daysSinceJ2000 = (date.getTime() - j2000.getTime()) / (1000 * 60 * 60 * 24);
+  const daysSinceJ2000 = (jde - 2451545.0); // J2000.0 的儒略日
   
   // 计算格林威治恒星时 (更精确的公式)
   const gmst = (280.46061837 + 360.98564736629 * daysSinceJ2000) % 360;
