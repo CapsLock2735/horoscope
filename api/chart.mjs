@@ -11,9 +11,10 @@ import vsop87Djupiter from 'astronomia/data/vsop87Djupiter';
 import vsop87Dsaturn from 'astronomia/data/vsop87Dsaturn';
 import vsop87Duranus from 'astronomia/data/vsop87Duranus';
 import vsop87Dneptune from 'astronomia/data/vsop87Dneptune';
-// --- 逻辑修正 1：根据指南，导入正确的坐标和恒星时模块 ---
+// --- 逻辑修正 1：根据指南和报错，导入正确的模块 ---
 import coord from 'astronomia/coord';
 import sidereal from 'astronomia/sidereal';
+import ecliptic from 'astronomia/ecliptic'; // <--- 增加此行，修正报错
 
 
 const geocoder = NodeGeocoder({
@@ -30,7 +31,6 @@ const norm360 = d => (d % 360 + 360) % 360;
 const signFromDeg = d => SIGNS[Math.floor(norm360(d) / 30) % 12];
 const signFromDegEn = d => SIGNS_EN[Math.floor(norm360(d) / 30) % 12];
 
-// 逻辑修正：优化度数显示，增加秒，使其更精确
 const degText = d => { 
   const x = norm360(d);
   const deg = Math.floor(x);
@@ -40,12 +40,10 @@ const degText = d => {
   return `${signDegree}°${String(minutes).padStart(2,'0')}'${String(seconds).padStart(2,'0')}"`;
 };
 
-// --- 逻辑修正 2：修正行星位置计算（日心 -> 地心）并增加逆行判断 ---
 function calculatePlanets(jde) {
   const out = {};
   const earth = new Planet(vsop87Dearth);
 
-  // 太阳
   const sun = solar.apparentVSOP87(earth, jde);
   const sunLonDeg = norm360(radToDeg(sun.lon));
   out.Sun = { 
@@ -56,7 +54,6 @@ function calculatePlanets(jde) {
     isRetrograde: false
   };
 
-  // 月亮
   const moonPos = moonposition.position(jde);
   const moonLonDeg = norm360(radToDeg(moonPos.lon));
   out.Moon = { 
@@ -76,13 +73,10 @@ function calculatePlanets(jde) {
   for (const [name, ds] of Object.entries(datasets)) {
     try {
       const planet = new Planet(ds);
-      // 核心逻辑修正：使用 geocentricVSOP87 替换 planet.position
       const pos = solar.geocentricVSOP87(planet, earth, jde);
       
       if (pos && typeof pos.lon === 'number' && !isNaN(pos.lon)) {
         const lonDeg = norm360(radToDeg(pos.lon));
-        
-        // 增加逆行判断逻辑
         const posPrev = solar.geocentricVSOP87(planet, earth, jde - 0.001);
         const lonDegPrev = norm360(radToDeg(posPrev.lon));
         const isRetrograde = norm360(lonDeg - lonDegPrev) > 180;
@@ -95,32 +89,24 @@ function calculatePlanets(jde) {
           isRetrograde: isRetrograde
         };
       } else {
-        // 保留您原来的错误处理
         out[name] = { sign: "白羊座", signEn: "Aries", degree: "0°00'", longitude: 0, isRetrograde: false };
       }
     } catch (error) {
-      // 保留您原来的错误处理
       out[name] = { sign: "白羊座", signEn: "Aries", degree: "0°00'", longitude: 0, isRetrograde: false };
     }
   }
   return out;
 }
 
-// --- 逻辑修正 3：根据指南，使用 coord 和 sidereal 模块精确计算 ASC/MC ---
 function calculateAscMc(jde, latitude, longitude) {
-  // 根据指南，经度约定为“西正东负”，因此东经需要取负值
   const lonRad = degToRad(-longitude); 
   const latRad = degToRad(latitude);
+  const mst = sidereal.mean(jde);
+  const lstRad = degToRad(mst) + lonRad;
 
-  // 使用 sidereal 模块计算本地恒星时
-  const mst = sidereal.mean(jde); // 格林尼治平均恒星时
-  const lstRad = degToRad(mst) + lonRad; // 本地恒星时（弧度）
+  // --- 逻辑修正 2：直接从导入的 ecliptic 模块调用，修正报错 ---
+  const oblRad = ecliptic.trueObliquity(jde); // <--- 修正此行
 
-  // 使用 coord 模块获取黄赤交角
-  // 注意：coord 模块导出的对象中包含了 ecliptic 和 horizon 子对象
-  const oblRad = coord.ecliptic.trueObliquity(jde);
-
-  // 使用 coord.horizon 内的函数计算上升点和中天
   const ascRad = coord.horizon.ascendant(lstRad, latRad, oblRad);
   const mcRad = coord.horizon.midheaven(lstRad, oblRad);
 
@@ -143,7 +129,6 @@ function calculateAscMc(jde, latitude, longitude) {
   };
 }
 
-// 保留您原来的宫位计算和分配函数
 function wholeSignHouses(ascLongitude) {
   const houses = [];
   const ascSignIndex = Math.floor(norm360(ascLongitude) / 30);
@@ -161,7 +146,6 @@ function assignHouse(longitude, houses) {
   return ((signIndex - ascSignIndex + 12) % 12) + 1;
 }
 
-// 以下所有代码均保持不变
 function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffsetHours) {
   const localDate = new Date(
     parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), 
