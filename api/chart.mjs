@@ -1,8 +1,6 @@
 import NodeGeocoder from 'node-geocoder';
-import julian from 'astronomia/julian';
-import { Planet } from 'astronomia/planetposition';
-import solar from 'astronomia/solar';
-import moonposition from 'astronomia/moonposition';
+// 修正点 1: 只从库的“正门”导入所有需要的功能
+import { julian, Planet, solar, moonposition, houses } from 'astronomia';
 import vsop87Dearth from 'astronomia/data/vsop87Dearth';
 import vsop87Dmercury from 'astronomia/data/vsop87Dmercury';
 import vsop87Dvenus from 'astronomia/data/vsop87Dvenus';
@@ -11,9 +9,6 @@ import vsop87Djupiter from 'astronomia/data/vsop87Djupiter';
 import vsop87Dsaturn from 'astronomia/data/vsop87Dsaturn';
 import vsop87Duranus from 'astronomia/data/vsop87Duranus';
 import vsop87Dneptune from 'astronomia/data/vsop87Dneptune';
-// 修正点 1: 导入我们真正需要的、用于精确计算的官方模块
-import { sidereal, nutation, obliquity } from 'astronomia/meeus';
-import { houses as calculateHouses } from 'astronomia/houses';
 
 // --- 配置与常量 ---
 const geocoder = NodeGeocoder({
@@ -25,7 +20,7 @@ const SIGNS = ["白羊座","金牛座","双子座","巨蟹座","狮子座","处�
 const SIGNS_EN = ["Aries","Taurus","Gemini","Cancer","Leo","Virgo","Libra","Scorpio","Sagittarius","Capricorn","Aquarius","Pisces"];
 
 const radToDeg = r => r * 180 / Math.PI;
-const norm360 = d => (d % 360 + 360) % 360;
+const norm360 = d => (d % 360 + 360) % 12;
 const signFromDeg = d => SIGNS[Math.floor(norm360(d) / 30) % 12];
 const signFromDegEn = d => SIGNS_EN[Math.floor(norm360(d) / 30) % 12];
 const degText = d => { 
@@ -42,12 +37,10 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
   const utcDate = new Date(Date.UTC(year, month - 1, day, utcHour, utcMinute));
   const jde = julian.DateToJDE(utcDate);
 
-  // 修正点 2: 使用 astronomia 官方的、精确的宫位计算函数
-  // 这个函数会返回所有需要的数据，包括精确的上升点和天顶
-  const housesResult = calculateHouses.placidus(jde, latitude, longitude);
+  // 修正点 2: 直接使用从 'astronomia' 正确导入的 houses 对象
+  const housesResult = houses.placidus(jde, latitude, longitude);
   const ascendant = housesResult.asc;
   const mc = housesResult.mc;
-  const houseCusps = housesResult.cusps.map(c => c.longitude);
 
   // 行星计算 (这部分逻辑是正确的，予以保留)
   const planets = {};
@@ -75,7 +68,7 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
       signEn: signFromDegEn(lon),
       degree: degText(lon),
       longitude: Number(lon.toFixed(2)),
-      house: housesResult.house(lon) // 使用官方函数分配宫位
+      house: housesResult.house(lon)
     };
   }
 
@@ -95,11 +88,11 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
         longitude: Number(mc.toFixed(2))
       }
     },
-    houses: houseCusps.map((cusp, i) => ({
+    houses: housesResult.cusps.map((cusp, i) => ({
       house: i + 1,
-      sign: signFromDeg(cusp),
-      signEn: signFromDegEn(cusp),
-      cusp: Number(cusp.toFixed(2))
+      sign: signFromDeg(cusp.longitude),
+      signEn: signFromDegEn(cusp.longitude),
+      cusp: Number(cusp.longitude.toFixed(2))
     })),
     chartInfo: {
       date: utcDate.toISOString(),
