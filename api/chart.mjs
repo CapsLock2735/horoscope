@@ -11,7 +11,7 @@ import vsop87Djupiter from 'astronomia/data/vsop87Djupiter';
 import vsop87Dsaturn from 'astronomia/data/vsop87Dsaturn';
 import vsop87Duranus from 'astronomia/data/vsop87Duranus';
 import vsop87Dneptune from 'astronomia/data/vsop87Dneptune';
-import { siderealTime, ecliptic, horizon } from 'astronomia/coordinate';
+// import { siderealTime, ecliptic, horizon } from 'astronomia/coordinate';
 
 const geocoder = NodeGeocoder({
   provider: 'opencage',
@@ -77,18 +77,22 @@ function calculatePlanets(jde) {
 }
 
 function calculateAscMc(jde, latitude, longitude) {
-  // 计算恒星时
-  const st = siderealTime(jde);
+  // 简化的 ASC/MC 计算
+  // 使用基础天文计算，避免复杂的坐标转换
   
-  // 计算黄赤交角
-  const obliquity = ecliptic.meanObliquity(jde);
+  // 计算本地恒星时 (简化)
+  const date = julian.JDEToDate(jde);
+  const utcHours = date.getUTCHours() + date.getUTCMinutes() / 60;
+  const daysSinceEpoch = (date.getTime() - new Date('2000-01-01T12:00:00Z').getTime()) / (1000 * 60 * 60 * 24);
+  const st = (280.46061837 + 360.98564736629 * daysSinceEpoch + longitude) % 360;
   
-  // 计算 MC (中天)
-  const mcLon = norm360(st * 15);
+  // 计算 MC (中天) - 简化
+  const mcLon = norm360(st);
   
   // 计算 ASC (上升点) - 简化公式
   const latRad = degToRad(latitude);
-  const stRad = degToRad(st * 15);
+  const stRad = degToRad(st);
+  const obliquity = 23.4392911; // 黄赤交角近似值
   const oblRad = degToRad(obliquity);
   
   const ascLon = norm360(radToDeg(Math.atan2(
