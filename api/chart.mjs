@@ -72,13 +72,25 @@ function calculatePlanets(jde) {
     try {
       const planet = new Planet(ds);
       const pos = planet.position(jde);
-      const lonDeg = norm360(radToDeg(pos.lon));
-      out[name] = { 
-        sign: signFromDeg(lonDeg), 
-        signEn: signFromDegEn(lonDeg),
-        degree: degText(lonDeg), 
-        longitude: Number(lonDeg.toFixed(2)) 
-      };
+      
+      // 确保位置数据有效
+      if (pos && typeof pos.lon === 'number' && !isNaN(pos.lon)) {
+        const lonDeg = norm360(radToDeg(pos.lon));
+        out[name] = { 
+          sign: signFromDeg(lonDeg), 
+          signEn: signFromDegEn(lonDeg),
+          degree: degText(lonDeg), 
+          longitude: Number(lonDeg.toFixed(2)) 
+        };
+      } else {
+        console.error(`Invalid position data for ${name}:`, pos);
+        out[name] = { 
+          sign: "白羊座", 
+          signEn: "Aries",
+          degree: "0°00'", 
+          longitude: 0 
+        };
+      }
     } catch (error) {
       console.error(`Error calculating ${name}:`, error);
       // 如果计算失败，使用默认值
@@ -95,20 +107,20 @@ function calculatePlanets(jde) {
 }
 
 function calculateAscMc(jde, latitude, longitude) {
-  // 更准确的 ASC/MC 计算
+  // 使用更精确的 ASC/MC 计算方法
   
   // 计算从 J2000.0 开始的天数
-  const j2000 = new Date('2000-01-01T12:00:00Z');
-  const daysSinceJ2000 = (jde - 2451545.0); // J2000.0 的儒略日
+  const daysSinceJ2000 = (jde - 2451545.0);
   
-  // 计算格林威治恒星时 (更精确的公式)
-  const gmst = (280.46061837 + 360.98564736629 * daysSinceJ2000) % 360;
+  // 计算格林威治恒星时 (使用更精确的公式)
+  const T = daysSinceJ2000 / 36525.0; // 儒略世纪
+  const gmst = (280.46061837 + 360.98564736629 * daysSinceJ2000 + 0.000387933 * T * T) % 360;
   
   // 计算本地恒星时
   const lst = (gmst + longitude) % 360;
   
-  // 计算黄赤交角 (J2000.0 时的值)
-  const obliquity = 23.4392911;
+  // 计算黄赤交角 (考虑岁差)
+  const obliquity = 23.4392911 - 0.0130042 * T;
   
   // 计算 MC (中天) - 本地恒星时就是 MC 的黄经
   const mcLon = norm360(lst);
