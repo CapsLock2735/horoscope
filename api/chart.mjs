@@ -378,19 +378,46 @@ export default async function handler(req, res) {
     // 本命盘
     const natal = buildChart(year, month, day, hour, minute, latitude, longitude, tzOffset);
 
-    // 当前行运
-    const now = new Date();
-    const nowUtc = new Date(now.getTime() + now.getTimezoneOffset() * 60000);
-    const transits = buildChart(
-      nowUtc.getUTCFullYear(),
-      nowUtc.getUTCMonth() + 1,
-      nowUtc.getUTCDate(),
-      nowUtc.getUTCHours(),
-      nowUtc.getUTCMinutes(),
-      latitude,
-      longitude,
-      0
-    );
+    // 行运：可选指定日期；若未指定则使用服务器当前时间（向后兼容）
+    const { transitYear, transitMonth, transitDay } = req.query ?? req.body ?? {};
+    let transits;
+    if (
+      transitYear != null && `${transitYear}`.trim() !== '' &&
+      transitMonth != null && `${transitMonth}`.trim() !== '' &&
+      transitDay != null && `${transitDay}`.trim() !== ''
+    ) {
+      const tY = parseInt(transitYear, 10);
+      const tM = parseInt(transitMonth, 10);
+      const tD = parseInt(transitDay, 10);
+      if (Number.isNaN(tY) || Number.isNaN(tM) || Number.isNaN(tD)) {
+        return res.status(400).json({ error: 'Invalid transitYear/transitMonth/transitDay format' });
+      }
+      // 使用该日的 00:00 UTC 作为行运盘时间基准
+      const tDateUtc = new Date(Date.UTC(tY, tM - 1, tD, 0, 0, 0));
+      transits = buildChart(
+        tDateUtc.getUTCFullYear(),
+        tDateUtc.getUTCMonth() + 1,
+        tDateUtc.getUTCDate(),
+        tDateUtc.getUTCHours(),
+        tDateUtc.getUTCMinutes(),
+        latitude,
+        longitude,
+        0
+      );
+    } else {
+      const now = new Date();
+      const nowUtc = new Date(now.getTime() + now.getTimezoneOffset() * 60000);
+      transits = buildChart(
+        nowUtc.getUTCFullYear(),
+        nowUtc.getUTCMonth() + 1,
+        nowUtc.getUTCDate(),
+        nowUtc.getUTCHours(),
+        nowUtc.getUTCMinutes(),
+        latitude,
+        longitude,
+        0
+      );
+    }
 
     return res.status(200).json({
       natalChart: {
