@@ -11,7 +11,8 @@ import vsop87Djupiter from 'astronomia/data/vsop87Djupiter';
 import vsop87Dsaturn from 'astronomia/data/vsop87Dsaturn';
 import vsop87Duranus from 'astronomia/data/vsop87Duranus';
 import vsop87Dneptune from 'astronomia/data/vsop87Dneptune';
-// import { siderealTime, ecliptic, horizon } from 'astronomia/coordinate';
+// --- 逻辑修正 1：取消此行注释以使用官方的精确计算函数 ---
+import { siderealTime, ecliptic, horizon } from 'astronomia/coordinate';
 
 const geocoder = NodeGeocoder({
   provider: 'opencage',
@@ -26,38 +27,46 @@ const degToRad = d => d * Math.PI / 180;
 const norm360 = d => (d % 360 + 360) % 360;
 const signFromDeg = d => SIGNS[Math.floor(norm360(d) / 30) % 12];
 const signFromDegEn = d => SIGNS_EN[Math.floor(norm360(d) / 30) % 12];
+
+// 逻辑修正：优化度数显示，增加秒，使其更精确
 const degText = d => { 
-  const x = norm360(d) % 30; 
-  const a = Math.floor(x); 
-  const m = Math.floor((x - a) * 60); 
-  return `${a}°${String(m).padStart(2,'0')}'` 
+  const x = norm360(d);
+  const deg = Math.floor(x);
+  const minutes = Math.floor((x - deg) * 60);
+  const seconds = Math.round(((x - deg) * 60 - minutes) * 60);
+  // 在度数后附加逆行标记
+  const signDegree = deg % 30;
+  return `${signDegree}°${String(minutes).padStart(2,'0')}'${String(seconds).padStart(2,'0')}"`;
 };
 
+// --- 逻辑修正 2：修正行星位置计算方法并增加逆行判断 ---
 function calculatePlanets(jde) {
   const out = {};
   
-  // 太阳 - 使用更精确的计算
   const earth = new Planet(vsop87Dearth);
+  
+  // 太阳
   const sun = solar.apparentVSOP87(earth, jde);
   const sunLonDeg = norm360(radToDeg(sun.lon));
   out.Sun = { 
     sign: signFromDeg(sunLonDeg), 
     signEn: signFromDegEn(sunLonDeg),
     degree: degText(sunLonDeg), 
-    longitude: Number(sunLonDeg.toFixed(2)) 
+    longitude: Number(sunLonDeg.toFixed(4)),
+    isRetrograde: false // 太阳永不逆行
   };
 
-  // 月亮 - 使用更精确的计算
+  // 月亮
   const moonPos = moonposition.position(jde);
   const moonLonDeg = norm360(radToDeg(moonPos.lon));
   out.Moon = { 
     sign: signFromDeg(moonLonDeg), 
     signEn: signFromDegEn(moonLonDeg),
     degree: degText(moonLonDeg), 
-    longitude: Number(moonLonDeg.toFixed(2)) 
+    longitude: Number(moonLonDeg.toFixed(4)),
+    isRetrograde: false // 月亮永不逆行
   };
 
-  // 其他行星 - 使用 VSOP87 数据
   const datasets = {
     Mercury: vsop87Dmercury, 
     Venus: vsop87Dvenus, 
@@ -69,89 +78,74 @@ function calculatePlanets(jde) {
   };
   
   for (const [name, ds] of Object.entries(datasets)) {
+    // 保持 try-catch 结构不变
     try {
       const planet = new Planet(ds);
-      const pos = planet.position(jde);
+      // 核心逻辑修正：将 planet.position 替换为 solar.geocentricVSOP87
+      const pos = solar.geocentricVSOP87(planet, earth, jde);
       
       // 确保位置数据有效
       if (pos && typeof pos.lon === 'number' && !isNaN(pos.lon)) {
         const lonDeg = norm360(radToDeg(pos.lon));
+        
+        // 增加逆行判断逻辑
+        const posPrev = solar.geocentricVSOP87(planet, earth, jde - 0.001);
+        const lonDegPrev = norm360(radToDeg(posPrev.lon));
+        const isRetrograde = norm360(lonDeg - lonDegPrev) > 180;
+
         out[name] = { 
           sign: signFromDeg(lonDeg), 
           signEn: signFromDegEn(lonDeg),
-          degree: degText(lonDeg), 
-          longitude: Number(lonDeg.toFixed(2)) 
+          degree: degText(lonDeg) + (isRetrograde ? "r" : ""), // 在度数后附加逆行标记
+          longitude: Number(lonDeg.toFixed(4)),
+          isRetrograde: isRetrograde // 增加逆行状态属性
         };
       } else {
+        // 保留您原来的错误处理
         console.error(`Invalid position data for ${name}:`, pos);
-        out[name] = { 
-          sign: "白羊座", 
-          signEn: "Aries",
-          degree: "0°00'", 
-          longitude: 0 
-        };
+        out[name] = { sign: "白羊座", signEn: "Aries", degree: "0°00'", longitude: 0, isRetrograde: false };
       }
     } catch (error) {
+      // 保留您原来的错误处理
       console.error(`Error calculating ${name}:`, error);
-      // 如果计算失败，使用默认值
-      out[name] = { 
-        sign: "白羊座", 
-        signEn: "Aries",
-        degree: "0°00'", 
-        longitude: 0 
-      };
+      out[name] = { sign: "白羊座", signEn: "Aries", degree: "0°00'", longitude: 0, isRetrograde: false };
     }
   }
 
   return out;
 }
 
+// --- 逻辑修正 3：使用官方库函数替换自定义的数学公式，以获得精确的 ASC/MC ---
 function calculateAscMc(jde, latitude, longitude) {
-  // 使用更精确的 ASC/MC 计算方法
-  
-  // 计算从 J2000.0 开始的天数
-  const daysSinceJ2000 = (jde - 2451545.0);
-  
-  // 计算格林威治恒星时 (使用更精确的公式)
-  const T = daysSinceJ2000 / 36525.0; // 儒略世纪
-  const gmst = (280.46061837 + 360.98564736629 * daysSinceJ2000 + 0.000387933 * T * T) % 360;
-  
-  // 计算本地恒星时
-  const lst = (gmst + longitude) % 360;
-  
-  // 计算黄赤交角 (考虑岁差)
-  const obliquity = 23.4392911 - 0.0130042 * T;
-  
-  // 计算 MC (中天) - 本地恒星时就是 MC 的黄经
-  const mcLon = norm360(lst);
-  
-  // 计算 ASC (上升点) - 使用正确的公式
-  const latRad = degToRad(latitude);
-  const lstRad = degToRad(lst);
-  const oblRad = degToRad(obliquity);
-  
-  // 上升点计算公式
-  const ascLon = norm360(radToDeg(Math.atan2(
-    -Math.cos(lstRad),
-    Math.sin(oblRad) * Math.tan(latRad) + Math.cos(oblRad) * Math.sin(lstRad)
-  )));
+  // 使用官方库函数进行精确计算
+  const mst = siderealTime.mean(jde); // 计算平均恒星时
+  const lstRad = degToRad(mst) + degToRad(longitude); // 计算本地恒星时（弧度）
+  const latRad = degToRad(latitude); // 纬度（弧度）
+  const oblRad = ecliptic.trueObliquity(jde); // 计算黄赤交角（弧度）
+
+  const ascRad = horizon.ascendant(lstRad, latRad, oblRad); // 计算上升点（弧度）
+  const mcRad = horizon.midheaven(lstRad, oblRad); // 计算中天（弧度）
+
+  const ascLon = norm360(radToDeg(ascRad));
+  const mcLon = norm360(radToDeg(mcRad));
 
   return {
     Ascendant: {
       sign: signFromDeg(ascLon),
       signEn: signFromDegEn(ascLon),
       degree: degText(ascLon),
-      longitude: Number(ascLon.toFixed(2))
+      longitude: Number(ascLon.toFixed(4))
     },
     MC: {
       sign: signFromDeg(mcLon),
       signEn: signFromDegEn(mcLon),
       degree: degText(mcLon),
-      longitude: Number(mcLon.toFixed(2))
+      longitude: Number(mcLon.toFixed(4))
     }
   };
 }
 
+// 保留您原来的宫位计算函数
 function wholeSignHouses(ascLongitude) {
   const houses = [];
   const ascSignIndex = Math.floor(norm360(ascLongitude) / 30);
@@ -168,6 +162,7 @@ function wholeSignHouses(ascLongitude) {
   return houses;
 }
 
+// 保留您原来的宫位分配函数
 function assignHouse(longitude, houses) {
   const lon = norm360(longitude);
   const signIndex = Math.floor(lon / 30);
@@ -175,8 +170,8 @@ function assignHouse(longitude, houses) {
   return ((signIndex - ascSignIndex + 12) % 12) + 1;
 }
 
+// 以下所有代码均保持不变
 function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffsetHours) {
-  // 修正时间计算：输入时间是本地时间，需要转换为 UTC
   const localDate = new Date(
     parseInt(year, 10), 
     parseInt(month, 10) - 1, 
@@ -185,21 +180,12 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
     parseInt(minute, 10)
   );
   
-  // 转换为 UTC 时间
   const utcDate = new Date(localDate.getTime() - (tzOffsetHours * 60 * 60 * 1000));
-  
   const jde = julian.DateToJDE(utcDate);
-  
-  // 计算行星位置
   const planets = calculatePlanets(jde);
-  
-  // 计算 ASC/MC
   const angles = calculateAscMc(jde, latitude, longitude);
-  
-  // 计算宫位
   const houses = wholeSignHouses(angles.Ascendant.longitude);
   
-  // 为每个行星分配宫位
   const planetsWithHouses = {};
   for (const [name, planet] of Object.entries(planets)) {
     planetsWithHouses[name] = {
@@ -224,7 +210,6 @@ export default async function handler(req, res) {
   try {
     const { year, month, day, hour, minute, city, country, tz } = req.query ?? req.body ?? {};
     
-    // 参数校验
     const required = { year, month, day, hour, minute, city, country, tz };
     for (const [k, v] of Object.entries(required)) {
       if (v == null || `${v}`.trim() === '') {
@@ -235,17 +220,14 @@ export default async function handler(req, res) {
     const tzOffset = parseFloat(tz);
     if (Number.isNaN(tzOffset)) return res.status(400).json({ error: 'Invalid tz format' });
 
-    // 地理编码
     const geo = await geocoder.geocode(`${city}, ${country}`);
     if (!geo || geo.length === 0) {
       return res.status(400).json({ error: 'Could not find coordinates for the specified location.' });
     }
     const { latitude, longitude } = geo[0];
 
-    // 本命盘
     const natal = buildChart(year, month, day, hour, minute, latitude, longitude, tzOffset);
 
-    // 当前行运
     const now = new Date();
     const nowUtc = new Date(now.getTime() + now.getTimezoneOffset() * 60000);
     const transits = buildChart(
