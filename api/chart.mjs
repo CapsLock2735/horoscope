@@ -1,9 +1,7 @@
 import NodeGeocoder from 'node-geocoder';
-import julian from 'astronomia/julian';
-import { Planet } from 'astronomia/planetposition';
-import solar from 'astronomia/solar';
-import moonposition from 'astronomia/moonposition';
-import house from 'astronomia/house'; // 引入 house 模块
+// --- 核心修正：更改 astronomia 库的导入方式 ---
+import { julian, Planet, solar, moonposition, house } from 'astronomia';
+// --- 数据文件的导入方式保持不变 ---
 import vsop87Dearth from 'astronomia/data/vsop87Dearth';
 import vsop87Dmercury from 'astronomia/data/vsop87Dmercury';
 import vsop87Dvenus from 'astronomia/data/vsop87Dvenus';
@@ -27,7 +25,6 @@ const norm360 = d => (d % 360 + 360) % 360;
 const signFromDeg = d => SIGNS[Math.floor(norm360(d) / 30) % 12];
 const signFromDegEn = d => SIGNS_EN[Math.floor(norm360(d) / 30) % 12];
 
-// 优化度数格式化，增加秒
 const degText = d => { 
   const x = norm360(d);
   const deg = Math.floor(x);
@@ -36,12 +33,10 @@ const degText = d => {
   return `${deg % 30}°${String(minutes).padStart(2,'0')}'${String(seconds).padStart(2,'0')}"`;
 };
 
-// 核心修正：计算行星地心坐标和逆行
 function calculatePlanets(jde) {
   const out = {};
   const earth = new Planet(vsop87Dearth);
 
-  // 太阳
   const sunPos = solar.apparentVSOP87(earth, jde);
   const sunLonDeg = norm360(radToDeg(sunPos.lon));
   out.Sun = { 
@@ -49,10 +44,9 @@ function calculatePlanets(jde) {
     signEn: signFromDegEn(sunLonDeg),
     degree: degText(sunLonDeg), 
     longitude: Number(sunLonDeg.toFixed(4)),
-    isRetrograde: false // 太阳和月亮永不逆行
+    isRetrograde: false
   };
 
-  // 月亮
   const moonPos = moonposition.position(jde);
   const moonLonDeg = norm360(radToDeg(moonPos.lon));
   out.Moon = { 
@@ -63,7 +57,6 @@ function calculatePlanets(jde) {
     isRetrograde: false
   };
 
-  // 其他行星
   const datasets = {
     Mercury: vsop87Dmercury, 
     Venus: vsop87Dvenus, 
@@ -76,15 +69,10 @@ function calculatePlanets(jde) {
   
   for (const [name, ds] of Object.entries(datasets)) {
     const planet = new Planet(ds);
-    
-    // 核心修正：使用 geocentricVSOP87 计算地心坐标
     const pos = solar.geocentricVSOP87(planet, earth, jde);
     const lonDeg = norm360(radToDeg(pos.lon));
-
-    // 增加逆行判断
-    const posPrev = solar.geocentricVSOP87(planet, earth, jde - 0.001); // 取一小段时间之前的位置
+    const posPrev = solar.geocentricVSOP87(planet, earth, jde - 0.001);
     const lonDegPrev = norm360(radToDeg(posPrev.lon));
-    // 修正逆行判断逻辑，处理0/360度边界情况
     const isRetrograde = norm360(lonDeg - lonDegPrev) > 180;
 
     out[name] = { 
@@ -99,7 +87,6 @@ function calculatePlanets(jde) {
   return out;
 }
 
-// 核心修正：使用 Placidus 分宫制来分配宫位
 function assignHouse(longitude, houseCusps) {
     const lon = norm360(longitude);
     const cusps = houseCusps.map(c => norm360(c));
@@ -107,7 +94,6 @@ function assignHouse(longitude, houseCusps) {
     for (let i = 0; i < 12; i++) {
         const cusp1 = cusps[i];
         const cusp2 = cusps[(i + 1) % 12];
-        // 处理跨越0度（白羊座起点）的情况
         if (cusp1 > cusp2) {
             if (lon >= cusp1 || lon < cusp2) {
                 return i + 1;
@@ -118,9 +104,8 @@ function assignHouse(longitude, houseCusps) {
             }
         }
     }
-    return -1; // Should not happen
+    return -1;
 }
-
 
 function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffsetHours) {
   const localDate = new Date(
@@ -131,17 +116,10 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
     parseInt(minute, 10)
   );
   
-  // 转换为 UTC 时间
-  // 注意：astro.com 对于1990年5月的北京，考虑了夏令时，实际时区是 UTC+9
-  // 您的 tz=9 参数是正确的
   const utcDate = new Date(localDate.getTime() - (tzOffsetHours * 60 * 60 * 1000));
-  
   const jde = julian.DateToJDE(utcDate);
-  
-  // 计算行星位置
   const planets = calculatePlanets(jde);
   
-  // 核心修正：使用 Placidus 分宫制计算宫位和四轴
   const placidusCusps = house.placidus(jde, degToRad(latitude), degToRad(longitude));
   const ascLon = norm360(radToDeg(placidusCusps.asc));
   const mcLon = norm360(radToDeg(placidusCusps.mc));
@@ -170,7 +148,6 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
       degree: degText(cusp)
   }));
   
-  // 为每个行星分配宫位
   const planetsWithHouses = {};
   for (const [name, planet] of Object.entries(planets)) {
     planetsWithHouses[name] = {
@@ -191,7 +168,6 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
   };
 }
 
-// API Handler 部分保持不变
 export default async function handler(req, res) {
   try {
     const { year, month, day, hour, minute, city, country, tz } = req.query ?? req.body ?? {};
@@ -223,7 +199,7 @@ export default async function handler(req, res) {
       now.getMinutes(),
       latitude,
       longitude,
-      -now.getTimezoneOffset() / 60 // transit chart should use user's local timezone
+      -now.getTimezoneOffset() / 60
     );
 
     return res.status(200).json({
@@ -241,7 +217,7 @@ export default async function handler(req, res) {
       },
       analysis: {
         aspects: "Aspects calculation can be added here",
-        houseSystem: "Placidus", // 更新分宫制信息
+        houseSystem: "Placidus",
         zodiac: "Tropical"
       }
     });
