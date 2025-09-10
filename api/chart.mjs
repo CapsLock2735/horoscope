@@ -201,7 +201,7 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
     angles,
     houses,
     chartInfo: {
-      date: date.toISOString(),
+      date: utcDate.toISOString(),
       location: { latitude, longitude },
       timezone: tzOffsetHours
     }
