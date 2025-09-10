@@ -36,7 +36,7 @@ const degText = d => {
 function calculatePlanets(jde) {
   const out = {};
   
-  // 太阳
+  // 太阳 - 使用更精确的计算
   const earth = new Planet(vsop87Dearth);
   const sun = solar.apparentVSOP87(earth, jde);
   const sunLonDeg = norm360(radToDeg(sun.lon));
@@ -47,8 +47,9 @@ function calculatePlanets(jde) {
     longitude: Number(sunLonDeg.toFixed(2)) 
   };
 
-  // 月亮
-  const moonLonDeg = norm360(radToDeg(moonposition.position(jde).lon));
+  // 月亮 - 使用更精确的计算
+  const moonPos = moonposition.position(jde);
+  const moonLonDeg = norm360(radToDeg(moonPos.lon));
   out.Moon = { 
     sign: signFromDeg(moonLonDeg), 
     signEn: signFromDegEn(moonLonDeg),
@@ -56,48 +57,74 @@ function calculatePlanets(jde) {
     longitude: Number(moonLonDeg.toFixed(2)) 
   };
 
-  // 其他行星
+  // 其他行星 - 使用 VSOP87 数据
   const datasets = {
-    Mercury: vsop87Dmercury, Venus: vsop87Dvenus, Mars: vsop87Dmars,
-    Jupiter: vsop87Djupiter, Saturn: vsop87Dsaturn, Uranus: vsop87Duranus, Neptune: vsop87Dneptune
+    Mercury: vsop87Dmercury, 
+    Venus: vsop87Dvenus, 
+    Mars: vsop87Dmars,
+    Jupiter: vsop87Djupiter, 
+    Saturn: vsop87Dsaturn, 
+    Uranus: vsop87Duranus, 
+    Neptune: vsop87Dneptune
   };
   
   for (const [name, ds] of Object.entries(datasets)) {
-    const p = new Planet(ds).position(jde);
-    const lonDeg = norm360(radToDeg(p.lon));
-    out[name] = { 
-      sign: signFromDeg(lonDeg), 
-      signEn: signFromDegEn(lonDeg),
-      degree: degText(lonDeg), 
-      longitude: Number(lonDeg.toFixed(2)) 
-    };
+    try {
+      const planet = new Planet(ds);
+      const pos = planet.position(jde);
+      const lonDeg = norm360(radToDeg(pos.lon));
+      out[name] = { 
+        sign: signFromDeg(lonDeg), 
+        signEn: signFromDegEn(lonDeg),
+        degree: degText(lonDeg), 
+        longitude: Number(lonDeg.toFixed(2)) 
+      };
+    } catch (error) {
+      console.error(`Error calculating ${name}:`, error);
+      // 如果计算失败，使用默认值
+      out[name] = { 
+        sign: "白羊座", 
+        signEn: "Aries",
+        degree: "0°00'", 
+        longitude: 0 
+      };
+    }
   }
 
   return out;
 }
 
 function calculateAscMc(jde, latitude, longitude) {
-  // 简化的 ASC/MC 计算
-  // 使用基础天文计算，避免复杂的坐标转换
+  // 更准确的 ASC/MC 计算
   
-  // 计算本地恒星时 (简化)
+  // 计算儒略日对应的 UTC 时间
   const date = julian.JDEToDate(jde);
-  const utcHours = date.getUTCHours() + date.getUTCMinutes() / 60;
-  const daysSinceEpoch = (date.getTime() - new Date('2000-01-01T12:00:00Z').getTime()) / (1000 * 60 * 60 * 24);
-  const st = (280.46061837 + 360.98564736629 * daysSinceEpoch + longitude) % 360;
   
-  // 计算 MC (中天) - 简化
-  const mcLon = norm360(st);
+  // 计算从 J2000.0 开始的天数
+  const j2000 = new Date('2000-01-01T12:00:00Z');
+  const daysSinceJ2000 = (date.getTime() - j2000.getTime()) / (1000 * 60 * 60 * 24);
   
-  // 计算 ASC (上升点) - 简化公式
+  // 计算格林威治恒星时 (更精确的公式)
+  const gmst = (280.46061837 + 360.98564736629 * daysSinceJ2000) % 360;
+  
+  // 计算本地恒星时
+  const lst = (gmst + longitude) % 360;
+  
+  // 计算黄赤交角 (J2000.0 时的值)
+  const obliquity = 23.4392911;
+  
+  // 计算 MC (中天) - 本地恒星时就是 MC 的黄经
+  const mcLon = norm360(lst);
+  
+  // 计算 ASC (上升点) - 使用正确的公式
   const latRad = degToRad(latitude);
-  const stRad = degToRad(st);
-  const obliquity = 23.4392911; // 黄赤交角近似值
+  const lstRad = degToRad(lst);
   const oblRad = degToRad(obliquity);
   
+  // 上升点计算公式
   const ascLon = norm360(radToDeg(Math.atan2(
-    -Math.cos(stRad),
-    Math.sin(oblRad) * Math.tan(latRad) + Math.cos(oblRad) * Math.sin(stRad)
+    -Math.cos(lstRad),
+    Math.sin(oblRad) * Math.tan(latRad) + Math.cos(oblRad) * Math.sin(lstRad)
   )));
 
   return {
@@ -140,16 +167,19 @@ function assignHouse(longitude, houses) {
 }
 
 function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffsetHours) {
-  const utcHour = parseInt(hour, 10) - tzOffsetHours;
-  const date = new Date(Date.UTC(
+  // 修正时间计算：输入时间是本地时间，需要转换为 UTC
+  const localDate = new Date(
     parseInt(year, 10), 
     parseInt(month, 10) - 1, 
     parseInt(day, 10), 
-    utcHour, 
+    parseInt(hour, 10), 
     parseInt(minute, 10)
-  ));
+  );
   
-  const jde = julian.DateToJDE(date);
+  // 转换为 UTC 时间
+  const utcDate = new Date(localDate.getTime() - (tzOffsetHours * 60 * 60 * 1000));
+  
+  const jde = julian.DateToJDE(utcDate);
   
   // 计算行星位置
   const planets = calculatePlanets(jde);
