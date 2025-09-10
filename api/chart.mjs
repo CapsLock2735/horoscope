@@ -1,6 +1,7 @@
 import NodeGeocoder from 'node-geocoder';
-// --- 核心修正：更改 astronomia 库的导入方式 ---
-import { julian, Planet, solar, moonposition, house } from 'astronomia';
+// --- 核心修正：采用正确的模块导入方式 ---
+import astronomia from 'astronomia'; // 导入主对象
+import { Planet } from 'astronomia/planetposition'; // 保持对 Planet 的正确导入
 // --- 数据文件的导入方式保持不变 ---
 import vsop87Dearth from 'astronomia/data/vsop87Dearth';
 import vsop87Dmercury from 'astronomia/data/vsop87Dmercury';
@@ -37,7 +38,8 @@ function calculatePlanets(jde) {
   const out = {};
   const earth = new Planet(vsop87Dearth);
 
-  const sunPos = solar.apparentVSOP87(earth, jde);
+  // --- 核心修正：通过主对象调用模块 ---
+  const sunPos = astronomia.solar.apparentVSOP87(earth, jde);
   const sunLonDeg = norm360(radToDeg(sunPos.lon));
   out.Sun = { 
     sign: signFromDeg(sunLonDeg), 
@@ -47,7 +49,8 @@ function calculatePlanets(jde) {
     isRetrograde: false
   };
 
-  const moonPos = moonposition.position(jde);
+  // --- 核心修正：通过主对象调用模块 ---
+  const moonPos = astronomia.moonposition.position(jde);
   const moonLonDeg = norm360(radToDeg(moonPos.lon));
   out.Moon = { 
     sign: signFromDeg(moonLonDeg), 
@@ -69,9 +72,11 @@ function calculatePlanets(jde) {
   
   for (const [name, ds] of Object.entries(datasets)) {
     const planet = new Planet(ds);
-    const pos = solar.geocentricVSOP87(planet, earth, jde);
+    // --- 核心修正：通过主对象调用模块 ---
+    const pos = astronomia.solar.geocentricVSOP87(planet, earth, jde);
     const lonDeg = norm360(radToDeg(pos.lon));
-    const posPrev = solar.geocentricVSOP87(planet, earth, jde - 0.001);
+    // --- 核心修正：通过主对象调用模块 ---
+    const posPrev = astronomia.solar.geocentricVSOP87(planet, earth, jde - 0.001);
     const lonDegPrev = norm360(radToDeg(posPrev.lon));
     const isRetrograde = norm360(lonDeg - lonDegPrev) > 180;
 
@@ -117,10 +122,12 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
   );
   
   const utcDate = new Date(localDate.getTime() - (tzOffsetHours * 60 * 60 * 1000));
-  const jde = julian.DateToJDE(utcDate);
+  // --- 核心修正：通过主对象调用模块 ---
+  const jde = astronomia.julian.DateToJDE(utcDate);
   const planets = calculatePlanets(jde);
   
-  const placidusCusps = house.placidus(jde, degToRad(latitude), degToRad(longitude));
+  // --- 核心修正：通过主对象调用模块 ---
+  const placidusCusps = astronomia.house.placidus(jde, degToRad(latitude), degToRad(longitude));
   const ascLon = norm360(radToDeg(placidusCusps.asc));
   const mcLon = norm360(radToDeg(placidusCusps.mc));
   const houseCuspDegrees = placidusCusps.cusps.map(c => norm360(radToDeg(c)));
@@ -168,6 +175,7 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
   };
 }
 
+// Handler 部分保持不变
 export default async function handler(req, res) {
   try {
     const { year, month, day, hour, minute, city, country, tz } = req.query ?? req.body ?? {};
