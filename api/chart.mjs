@@ -1,6 +1,10 @@
 import NodeGeocoder from 'node-geocoder';
-// 修正点 1: 只从库的“正门”导入所有需要的功能
-import { julian, Planet, solar, moonposition, houses } from 'astronomia';
+// 修正点: 回归到您最初的、完全正确的、为每个功能分别导入的方式
+import julian from 'astronomia/julian';
+import { Planet } from 'astronomia/planetposition';
+import solar from 'astronomia/solar';
+import moonposition from 'astronomia/moonposition';
+import { houses } from 'astronomia/houses';
 import vsop87Dearth from 'astronomia/data/vsop87Dearth';
 import vsop87Dmercury from 'astronomia/data/vsop87Dmercury';
 import vsop87Dvenus from 'astronomia/data/vsop87Dvenus';
@@ -20,7 +24,7 @@ const SIGNS = ["白羊座","金牛座","双子座","巨蟹座","狮子座","处�
 const SIGNS_EN = ["Aries","Taurus","Gemini","Cancer","Leo","Virgo","Libra","Scorpio","Sagittarius","Capricorn","Aquarius","Pisces"];
 
 const radToDeg = r => r * 180 / Math.PI;
-const norm360 = d => (d % 360 + 360) % 12;
+const norm360 = d => (d % 360 + 360) % 360;
 const signFromDeg = d => SIGNS[Math.floor(norm360(d) / 30) % 12];
 const signFromDegEn = d => SIGNS_EN[Math.floor(norm360(d) / 30) % 12];
 const degText = d => { 
@@ -37,7 +41,7 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
   const utcDate = new Date(Date.UTC(year, month - 1, day, utcHour, utcMinute));
   const jde = julian.DateToJDE(utcDate);
 
-  // 修正点 2: 直接使用从 'astronomia' 正确导入的 houses 对象
+  // 使用 astronomia 官方的、精确的宫位计算函数
   const housesResult = houses.placidus(jde, latitude, longitude);
   const ascendant = housesResult.asc;
   const mc = housesResult.mc;
