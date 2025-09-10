@@ -1,4 +1,4 @@
-import NodeGeocoder from 'node-Geocoder';
+import NodeGeocoder from 'node-geocoder';
 // --- 恢复您原始的、可工作的导入语句 ---
 import julian from 'astronomia/julian';
 import { Planet } from 'astronomia/planetposition';
