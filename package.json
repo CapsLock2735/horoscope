@@ -1,20 +1,7 @@
 {
-  "name": "astro-chart-api",
-  "version": "1.0.0",
-  "description": "Serverless API to return natal and transit chart data for AI analysis",
   "type": "module",
-  "scripts": {
-    "start": "node app.js"
-  },
-  "keywords": [
-    "Astrology",
-    "API",
-    "serverless"
-  ],
-  "license": "MIT",
   "dependencies": {
-    "express": "^4.19.2",
-    "node-geocoder": "^4.3.0",
-    "astronomia": "^4.2.0"
+    "sweph-wasm": "^2.6.9",
+    "node-geocoder": "^4.3.0"
   }
 }
