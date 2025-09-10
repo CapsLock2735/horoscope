@@ -1,7 +1,7 @@
 {
   "type": "module",
   "dependencies": {
-    "sweph-wasm": "^2.6.9",
+    "astronomia": "^4.2.0",
     "node-geocoder": "^4.3.0"
   }
 }
