@@ -1,28 +1,31 @@
+import SwissEPH from 'sweph-wasm';
 import NodeGeocoder from 'node-geocoder';
-import julian from 'astronomia/julian';
-import { Planet } from 'astronomia/planetposition';
-import solar from 'astronomia/solar';
-import moonposition from 'astronomia/moonposition';
-import vsop87Dearth from 'astronomia/data/vsop87Dearth';
-import vsop87Dmercury from 'astronomia/data/vsop87Dmercury';
-import vsop87Dvenus from 'astronomia/data/vsop87Dvenus';
-import vsop87Dmars from 'astronomia/data/vsop87Dmars';
-import vsop87Djupiter from 'astronomia/data/vsop87Djupiter';
-import vsop87Dsaturn from 'astronomia/data/vsop87Dsaturn';
-import vsop87Duranus from 'astronomia/data/vsop87Duranus';
-import vsop87Dneptune from 'astronomia/data/vsop87Dneptune';
-// import { siderealTime, ecliptic, horizon } from 'astronomia/coordinate';
 
+// --- 1. 初始化 (Initialization) ---
+// 这是最关键的一步，必须在所有计算之前完成。
+// 我们在模块顶层进行初始化，以便 Vercel 可以复用已加载的实例。
+const swe = await SwissEPH.init();
+// 从 CDN 下载星历文件，这是在 Vercel 等无服务器环境中的最佳实践。
+await swe.swe_set_ephe_path();
+
+// --- 2. 配置与常量 (Configuration & Constants) ---
 const geocoder = NodeGeocoder({
   provider: 'opencage',
-  apiKey: process.env.GEOCODER_API_KEY
+  apiKey: process.env.GEOCODER_API_KEY,
 });
 
 const SIGNS = ["白羊座","金牛座","双子座","巨蟹座","狮子座","处女座","天秤座","天蝎座","射手座","摩羯座","水瓶座","双鱼座"];
 const SIGNS_EN = ["Aries","Taurus","Gemini","Cancer","Leo","Virgo","Libra","Scorpio","Sagittarius","Capricorn","Aquarius","Pisces"];
 
-const radToDeg = r => r * 180 / Math.PI;
-const degToRad = d => d * Math.PI / 180;
+// 根据文档，定义行星常量
+const PLANET_IDS = {
+  Sun: swe.PLANETS.SUN, Moon: swe.PLANETS.MOON, Mercury: swe.PLANETS.MERCURY,
+  Venus: swe.PLANETS.VENUS, Mars: swe.PLANETS.MARS, Jupiter: swe.PLANETS.JUPITER,
+  Saturn: swe.PLANETS.SATURN, Uranus: swe.PLANETS.URANUS, Neptune: swe.PLANETS.NEPTUNE,
+  Pluto: swe.PLANETS.PLUTO, NorthNode: swe.PLANETS.TRUE_NODE
+};
+
+// --- 3. 辅助函数 (Helper Functions) ---
 const norm360 = d => (d % 360 + 360) % 360;
 const signFromDeg = d => SIGNS[Math.floor(norm360(d) / 30) % 12];
 const signFromDegEn = d => SIGNS_EN[Math.floor(norm360(d) / 30) % 12];
@@ -30,188 +33,91 @@ const degText = d => {
   const x = norm360(d) % 30; 
   const a = Math.floor(x); 
   const m = Math.floor((x - a) * 60); 
-  return `${a}°${String(m).padStart(2,'0')}'` 
+  return `${a}°${String(m).padStart(2,'0')}'`;
 };
 
-function calculatePlanets(jde) {
-  const out = {};
-  
-  // 太阳 - 使用更精确的计算
-  const earth = new Planet(vsop87Dearth);
-  const sun = solar.apparentVSOP87(earth, jde);
-  const sunLonDeg = norm360(radToDeg(sun.lon));
-  out.Sun = { 
-    sign: signFromDeg(sunLonDeg), 
-    signEn: signFromDegEn(sunLonDeg),
-    degree: degText(sunLonDeg), 
-    longitude: Number(sunLonDeg.toFixed(2)) 
-  };
-
-  // 月亮 - 使用更精确的计算
-  const moonPos = moonposition.position(jde);
-  const moonLonDeg = norm360(radToDeg(moonPos.lon));
-  out.Moon = { 
-    sign: signFromDeg(moonLonDeg), 
-    signEn: signFromDegEn(moonLonDeg),
-    degree: degText(moonLonDeg), 
-    longitude: Number(moonLonDeg.toFixed(2)) 
-  };
-
-  // 其他行星 - 使用 VSOP87 数据
-  const datasets = {
-    Mercury: vsop87Dmercury, 
-    Venus: vsop87Dvenus, 
-    Mars: vsop87Dmars,
-    Jupiter: vsop87Djupiter, 
-    Saturn: vsop87Dsaturn, 
-    Uranus: vsop87Duranus, 
-    Neptune: vsop87Dneptune
-  };
-  
-  for (const [name, ds] of Object.entries(datasets)) {
-    try {
-      const planet = new Planet(ds);
-      const pos = planet.position(jde);
-      
-      // 确保位置数据有效
-      if (pos && typeof pos.lon === 'number' && !isNaN(pos.lon)) {
-        const lonDeg = norm360(radToDeg(pos.lon));
-        out[name] = { 
-          sign: signFromDeg(lonDeg), 
-          signEn: signFromDegEn(lonDeg),
-          degree: degText(lonDeg), 
-          longitude: Number(lonDeg.toFixed(2)) 
-        };
-      } else {
-        console.error(`Invalid position data for ${name}:`, pos);
-        out[name] = { 
-          sign: "白羊座", 
-          signEn: "Aries",
-          degree: "0°00'", 
-          longitude: 0 
-        };
-      }
-    } catch (error) {
-      console.error(`Error calculating ${name}:`, error);
-      // 如果计算失败，使用默认值
-      out[name] = { 
-        sign: "白羊座", 
-        signEn: "Aries",
-        degree: "0°00'", 
-        longitude: 0 
-      };
-    }
-  }
-
-  return out;
-}
-
-function calculateAscMc(jde, latitude, longitude) {
-  // 使用更精确的 ASC/MC 计算方法
-  
-  // 计算从 J2000.0 开始的天数
-  const daysSinceJ2000 = (jde - 2451545.0);
-  
-  // 计算格林威治恒星时 (使用更精确的公式)
-  const T = daysSinceJ2000 / 36525.0; // 儒略世纪
-  const gmst = (280.46061837 + 360.98564736629 * daysSinceJ2000 + 0.000387933 * T * T) % 360;
-  
-  // 计算本地恒星时
-  const lst = (gmst + longitude) % 360;
-  
-  // 计算黄赤交角 (考虑岁差)
-  const obliquity = 23.4392911 - 0.0130042 * T;
-  
-  // 计算 MC (中天) - 本地恒星时就是 MC 的黄经
-  const mcLon = norm360(lst);
-  
-  // 计算 ASC (上升点) - 使用正确的公式
-  const latRad = degToRad(latitude);
-  const lstRad = degToRad(lst);
-  const oblRad = degToRad(obliquity);
-  
-  // 上升点计算公式
-  const ascLon = norm360(radToDeg(Math.atan2(
-    -Math.cos(lstRad),
-    Math.sin(oblRad) * Math.tan(latRad) + Math.cos(oblRad) * Math.sin(lstRad)
-  )));
-
-  return {
-    Ascendant: {
-      sign: signFromDeg(ascLon),
-      signEn: signFromDegEn(ascLon),
-      degree: degText(ascLon),
-      longitude: Number(ascLon.toFixed(2))
-    },
-    MC: {
-      sign: signFromDeg(mcLon),
-      signEn: signFromDegEn(mcLon),
-      degree: degText(mcLon),
-      longitude: Number(mcLon.toFixed(2))
-    }
-  };
-}
-
-function wholeSignHouses(ascLongitude) {
-  const houses = [];
-  const ascSignIndex = Math.floor(norm360(ascLongitude) / 30);
-  
+// 为行星分配宫位 (使用 Placidus 宫位系统)
+function assignHouseToPlanet(planetLon, houseCusps) {
+  const lon = norm360(planetLon);
   for (let i = 0; i < 12; i++) {
-    const signIndex = (ascSignIndex + i) % 12;
-    houses.push({
-      house: i + 1,
-      sign: SIGNS[signIndex],
-      signEn: SIGNS_EN[signIndex],
-      cusp: signIndex * 30
-    });
+    const cuspStart = houseCusps[i];
+    const cuspEnd = houseCusps[(i + 1) % 12];
+    // 处理跨越0度白羊座的情况
+    if (cuspStart < cuspEnd) {
+      if (lon >= cuspStart && lon < cuspEnd) {
+        return i + 1;
+      }
+    } else {
+      if (lon >= cuspStart || lon < cuspEnd) {
+        return i + 1;
+      }
+    }
   }
-  return houses;
+  return -1; // Should not happen
 }
 
-function assignHouse(longitude, houses) {
-  const lon = norm360(longitude);
-  const signIndex = Math.floor(lon / 30);
-  const ascSignIndex = Math.floor(houses[0].cusp / 30);
-  return ((signIndex - ascSignIndex + 12) % 12) + 1;
-}
-
+// --- 4. 核心计算函数 (Core Calculation Function) ---
+// 这个函数完全基于 sweph-wasm 文档重写
 function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffsetHours) {
-  // 修正时间计算：输入时间是本地时间，需要转换为 UTC
-  const localDate = new Date(
-    parseInt(year, 10), 
-    parseInt(month, 10) - 1, 
-    parseInt(day, 10), 
-    parseInt(hour, 10), 
-    parseInt(minute, 10)
-  );
-  
-  // 转换为 UTC 时间
+  // 将本地时间转换为 UTC 时间
+  const localDate = new Date(year, month - 1, day, hour, minute);
   const utcDate = new Date(localDate.getTime() - (tzOffsetHours * 60 * 60 * 1000));
-  
-  const jde = julian.DateToJDE(utcDate);
-  
-  // 计算行星位置
-  const planets = calculatePlanets(jde);
-  
-  // 计算 ASC/MC
-  const angles = calculateAscMc(jde, latitude, longitude);
-  
-  // 计算宫位
-  const houses = wholeSignHouses(angles.Ascendant.longitude);
-  
-  // 为每个行星分配宫位
-  const planetsWithHouses = {};
-  for (const [name, planet] of Object.entries(planets)) {
-    planetsWithHouses[name] = {
-      ...planet,
-      house: assignHouse(planet.longitude, houses)
+
+  // 使用 sweph-wasm 的函数计算儒略日 (UT)
+  const jd_ut = swe.swe_julday(
+    utcDate.getUTCFullYear(),
+    utcDate.getUTCMonth() + 1,
+    utcDate.getUTCDate(),
+    utcDate.getUTCHours() + utcDate.getUTCMinutes() / 60,
+    swe.SE_GREG_CAL
+  );
+
+  // 计算宫位和四轴 (上升点/天顶) - 使用权威的 Placidus 宫位制 ('P')
+  const houses = swe.swe_houses(jd_ut, latitude, longitude, 'P');
+  const ascendant = houses.ascmc[0];
+  const mc = houses.ascmc[1];
+  const houseCusps = houses.cusps;
+
+  // 计算所有行星的位置
+  const planets = {};
+  const flags = swe.SEFLG_SPEED; // 请求计算速度，用于判断逆行
+
+  for (const [name, id] of Object.entries(PLANET_IDS)) {
+    const pos = swe.swe_calc_ut(jd_ut, id, flags);
+    const lon = pos[0];
+    const speed = pos[3];
+    planets[name] = {
+      sign: signFromDeg(lon),
+      signEn: signFromDegEn(lon),
+      degree: degText(lon),
+      longitude: Number(lon.toFixed(2)),
+      house: assignHouseToPlanet(lon, houseCusps),
+      isRetrograde: speed < 0
     };
   }
-  
+
   return {
-    planets: planetsWithHouses,
-    angles,
-    houses,
+    planets,
+    angles: {
+      Ascendant: {
+        sign: signFromDeg(ascendant),
+        signEn: signFromDegEn(ascendant),
+        degree: degText(ascendant),
+        longitude: Number(ascendant.toFixed(2))
+      },
+      MC: {
+        sign: signFromDeg(mc),
+        signEn: signFromDegEn(mc),
+        degree: degText(mc),
+        longitude: Number(mc.toFixed(2))
+      }
+    },
+    houses: houseCusps.map((cusp, i) => ({
+      house: i + 1,
+      sign: signFromDeg(cusp),
+      signEn: signFromDegEn(cusp),
+      cusp: Number(cusp.toFixed(2))
+    })),
     chartInfo: {
       date: utcDate.toISOString(),
       location: { latitude, longitude },
@@ -220,11 +126,11 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
   };
 }
 
+// --- 5. API 处理器 (API Handler) ---
 export default async function handler(req, res) {
   try {
     const { year, month, day, hour, minute, city, country, tz } = req.query ?? req.body ?? {};
     
-    // 参数校验
     const required = { year, month, day, hour, minute, city, country, tz };
     for (const [k, v] of Object.entries(required)) {
       if (v == null || `${v}`.trim() === '') {
@@ -235,46 +141,34 @@ export default async function handler(req, res) {
     const tzOffset = parseFloat(tz);
     if (Number.isNaN(tzOffset)) return res.status(400).json({ error: 'Invalid tz format' });
 
-    // 地理编码
     const geo = await geocoder.geocode(`${city}, ${country}`);
     if (!geo || geo.length === 0) {
       return res.status(400).json({ error: 'Could not find coordinates for the specified location.' });
     }
     const { latitude, longitude } = geo[0];
 
-    // 本命盘
+    // 计算本命盘
     const natal = buildChart(year, month, day, hour, minute, latitude, longitude, tzOffset);
 
-    // 当前行运
+    // 计算当前行运盘
     const now = new Date();
-    const nowUtc = new Date(now.getTime() + now.getTimezoneOffset() * 60000);
     const transits = buildChart(
-      nowUtc.getUTCFullYear(),
-      nowUtc.getUTCMonth() + 1,
-      nowUtc.getUTCDate(),
-      nowUtc.getUTCHours(),
-      nowUtc.getUTCMinutes(),
+      now.getFullYear(),
+      now.getMonth() + 1,
+      now.getDate(),
+      now.getHours(),
+      now.getMinutes(),
       latitude,
       longitude,
-      0
+      -now.getTimezoneOffset() / 60 // 当前本地时区
     );
 
     return res.status(200).json({
-      natalChart: {
-        planets: natal.planets,
-        angles: natal.angles,
-        houses: natal.houses,
-        chartInfo: natal.chartInfo
-      },
-      transits: {
-        planets: transits.planets,
-        angles: transits.angles,
-        houses: transits.houses,
-        chartInfo: transits.chartInfo
-      },
+      natalChart: natal,
+      transits: transits,
       analysis: {
         aspects: "Aspects calculation can be added here",
-        houseSystem: "Whole Sign Houses",
+        houseSystem: "Placidus",
         zodiac: "Tropical"
       }
     });
