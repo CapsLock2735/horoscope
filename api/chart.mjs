@@ -33,6 +33,23 @@ const degText = d => {
   return `${a}°${String(m).padStart(2,'0')}'` 
 };
 
+// 将球坐标转换为直角坐标（黄道坐标系，单位：天文单位）
+function eclipticSphericalToRectangular(lon, lat, range) {
+  const cosLat = Math.cos(lat);
+  const x = range * cosLat * Math.cos(lon);
+  const y = range * cosLat * Math.sin(lon);
+  const z = range * Math.sin(lat);
+  return { x, y, z };
+}
+
+// 直角坐标转回球坐标（返回：lon, lat, range）
+function rectangularToEclipticSpherical(x, y, z) {
+  const range = Math.hypot(x, y, z);
+  const lon = Math.atan2(y, x);
+  const lat = Math.atan2(z, Math.hypot(x, y));
+  return { lon, lat, range };
+}
+
 function calculatePlanets(jde) {
   const out = {};
   
@@ -57,7 +74,7 @@ function calculatePlanets(jde) {
     longitude: Number(moonLonDeg.toFixed(2)) 
   };
 
-  // 其他行星 - 使用 VSOP87 数据
+  // 其他行星 - 使用 VSOP87 数据（改为地心黄经）
   const datasets = {
     Mercury: vsop87Dmercury, 
     Venus: vsop87Dvenus, 
@@ -68,14 +85,24 @@ function calculatePlanets(jde) {
     Neptune: vsop87Dneptune
   };
   
+  // 地球的日心位置（黄道球坐标 -> 直角坐标）
+  const earthHelio = earth.position(jde); // {lon, lat, range} (radians, AU)
+  const eRect = eclipticSphericalToRectangular(earthHelio.lon, earthHelio.lat, earthHelio.range);
+
   for (const [name, ds] of Object.entries(datasets)) {
     try {
       const planet = new Planet(ds);
-      const pos = planet.position(jde);
+      // VSOP87 返回行星的日心黄道球坐标（日期黄道）
+      const pHelio = planet.position(jde);
+      // 转换为直角坐标
+      const pRect = eclipticSphericalToRectangular(pHelio.lon, pHelio.lat, pHelio.range);
+      // 由日心转地心：行星 - 地球
+      const geoRect = { x: pRect.x - eRect.x, y: pRect.y - eRect.y, z: pRect.z - eRect.z };
+      const geo = rectangularToEclipticSpherical(geoRect.x, geoRect.y, geoRect.z);
       
       // 确保位置数据有效
-      if (pos && typeof pos.lon === 'number' && !isNaN(pos.lon)) {
-        const lonDeg = norm360(radToDeg(pos.lon));
+      if (geo && typeof geo.lon === 'number' && !isNaN(geo.lon)) {
+        const lonDeg = norm360(radToDeg(geo.lon));
         out[name] = { 
           sign: signFromDeg(lonDeg), 
           signEn: signFromDegEn(lonDeg),
@@ -106,31 +133,60 @@ function calculatePlanets(jde) {
   return out;
 }
 
-function calculateAscMc(jde, latitude, longitude) {
-  // 使用更精确的 ASC/MC 计算方法
+// 从 UTC Date 计算儒略日（UT）
+function dateToJulianDayUTC(date) {
+  return 2440587.5 + date.getTime() / 86400000;
+}
+
+// 平黄赤交角（角秒 -> 度）
+function meanObliquityDeg(T) {
+  const seconds = 21.448 - 46.8150 * T - 0.00059 * T * T + 0.001813 * T * T * T;
+  return 23 + 26 / 60 + seconds / 3600;
+}
+
+// 简化章动（Meeus 简式，单位：弧秒）
+function nutationInLongitudeArcsec(T) {
+  const L = degToRad(280.4665 + 36000.7698 * T);
+  const Lp = degToRad(218.3165 + 481267.8813 * T);
+  const Om = degToRad(125.04452 - 1934.136261 * T + 0.0020708 * T * T + T * T * T / 450000);
+  return -17.20 * Math.sin(Om) - 1.32 * Math.sin(2 * L) - 0.23 * Math.sin(2 * Lp) + 0.21 * Math.sin(2 * Om);
+}
+
+function nutationInObliquityArcsec(T) {
+  const L = degToRad(280.4665 + 36000.7698 * T);
+  const Lp = degToRad(218.3165 + 481267.8813 * T);
+  const Om = degToRad(125.04452 - 1934.136261 * T + 0.0020708 * T * T + T * T * T / 450000);
+  return 9.20 * Math.cos(Om) + 0.57 * Math.cos(2 * L) + 0.10 * Math.cos(2 * Lp) - 0.09 * Math.cos(2 * Om);
+}
+
+// 计算格林威治视恒星时（度）
+function apparentSiderealTimeDeg(jdUT) {
+  const T = (jdUT - 2451545.0) / 36525.0;
+  const gmst = 280.46061837 + 360.98564736629 * (jdUT - 2451545.0) + 0.000387933 * T * T - T * T * T / 38710000.0;
+  const eps0 = meanObliquityDeg(T);
+  const dPsi = nutationInLongitudeArcsec(T); // arcsec
+  const eps = eps0 + nutationInObliquityArcsec(T) / 3600.0; // deg
+  const eqEqDeg = (dPsi * Math.cos(degToRad(eps))) / 3600.0; // deg
+  return norm360(gmst + eqEqDeg);
+}
+
+function calculateAscMc(utcDate, latitude, longitude) {
+  // 计算本地视恒星时（度）
+  const jdUT = dateToJulianDayUTC(utcDate);
+  const gast = apparentSiderealTimeDeg(jdUT);
+  const lst = norm360(gast + longitude);
   
-  // 计算从 J2000.0 开始的天数
-  const daysSinceJ2000 = (jde - 2451545.0);
+  // 计算黄赤交角（真黄赤交角）
+  const T = (jdUT - 2451545.0) / 36525.0;
+  const obliquity = meanObliquityDeg(T) + nutationInObliquityArcsec(T) / 3600.0;
   
-  // 计算格林威治恒星时 (使用更精确的公式)
-  const T = daysSinceJ2000 / 36525.0; // 儒略世纪
-  const gmst = (280.46061837 + 360.98564736629 * daysSinceJ2000 + 0.000387933 * T * T) % 360;
-  
-  // 计算本地恒星时
-  const lst = (gmst + longitude) % 360;
-  
-  // 计算黄赤交角 (考虑岁差)
-  const obliquity = 23.4392911 - 0.0130042 * T;
-  
-  // 计算 MC (中天) - 本地恒星时就是 MC 的黄经
-  const mcLon = norm360(lst);
-  
-  // 计算 ASC (上升点) - 使用正确的公式
-  const latRad = degToRad(latitude);
+  // 计算 MC（中天）
   const lstRad = degToRad(lst);
   const oblRad = degToRad(obliquity);
+  const mcLon = norm360(radToDeg(Math.atan2(Math.sin(lstRad), Math.cos(lstRad) * Math.cos(oblRad))));
   
-  // 上升点计算公式
+  // 计算 ASC（上升点）
+  const latRad = degToRad(latitude);
   const ascLon = norm360(radToDeg(Math.atan2(
     -Math.cos(lstRad),
     Math.sin(oblRad) * Math.tan(latRad) + Math.cos(oblRad) * Math.sin(lstRad)
@@ -194,7 +250,7 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
   const planets = calculatePlanets(jde);
   
   // 计算 ASC/MC
-  const angles = calculateAscMc(jde, latitude, longitude);
+  const angles = calculateAscMc(utcDate, latitude, longitude);
   
   // 计算宫位
   const houses = wholeSignHouses(angles.Ascendant.longitude);
