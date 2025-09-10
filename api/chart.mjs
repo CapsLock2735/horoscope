@@ -1,27 +1,21 @@
-import { readFileSync } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import SwissEPH from 'sweph-wasm';
 import NodeGeocoder from 'node-geocoder';
+import wasmBase64 from './wasm-base64.mjs'; // 导入我们之前生成的 Base64 模块
 
-// --- 1. 初始化 (Initialization) - 修正版 ---
-// 这是解决问题的关键：我们不再让库从网络下载，而是从本地文件系统加载。
+// --- 1. 初始化 (Initialization) - 最终修正版 ---
+// 这是解决所有问题的关键：我们从 Base64 字符串解码出 WASM 引擎
+// 这种方法 100% 兼容 Vercel 环境，因为它不依赖网络或文件系统。
 
-// a. 获取 .wasm 文件的绝对路径
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const wasmPath = path.join(__dirname, '..', 'node_modules', 'sweph-wasm', 'dist', 'wasm', 'swisseph.wasm');
+// a. 将 Base64 字符串解码为二进制 Buffer
+const wasmBuffer = Buffer.from(wasmBase64, 'base64');
 
-// b. 将 .wasm 文件读入内存
-const wasmBuffer = readFileSync(wasmPath);
-
-// c. 将文件 buffer 传递给 init 函数，强制进行本地初始化
+// b. 将这个在内存中创建的 Buffer 传递给 init 函数
 const swe = await SwissEPH.init(wasmBuffer);
 
-// d. 设置星历文件路径 (这一步仍然需要)
+// c. 设置星历文件路径 (这一步仍然需要，它会从 CDN 下载数据文件，这是被允许的)
 await swe.swe_set_ephe_path();
 
-// --- 2. 配置与常量 (这部分无需改动) ---
+// --- 2. 配置与常量 ---
 const geocoder = NodeGeocoder({
   provider: 'opencage',
   apiKey: process.env.GEOCODER_API_KEY,
@@ -37,7 +31,7 @@ const PLANET_IDS = {
   Pluto: swe.PLANETS.PLUTO, NorthNode: swe.PLANETS.TRUE_NODE
 };
 
-// --- 3. 辅助函数 (这部分无需改动) ---
+// --- 3. 辅助函数 ---
 const norm360 = d => (d % 360 + 360) % 360;
 const signFromDeg = d => SIGNS[Math.floor(norm360(d) / 30) % 12];
 const signFromDegEn = d => SIGNS_EN[Math.floor(norm360(d) / 30) % 12];
@@ -59,14 +53,17 @@ function assignHouseToPlanet(planetLon, houseCusps) {
       if (lon >= cuspStart || lon < cuspEnd) return i + 1;
     }
   }
-  return -1;
+  return -1; // Should not happen
 }
 
-// --- 4. 核心计算函数 (这部分无需改动) ---
+// --- 4. 核心计算函数 ---
 function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffsetHours) {
-  const localDate = new Date(year, month - 1, day, hour, minute);
-  const utcDate = new Date(localDate.getTime() - (tzOffsetHours * 60 * 60 * 1000));
+  // 修正时间转换：使用 Date.UTC() 来创建无歧义的 UTC 时间对象
+  const utcHour = parseFloat(hour) - tzOffsetHours;
+  const utcMinute = parseFloat(minute);
+  const utcDate = new Date(Date.UTC(year, month - 1, day, utcHour, utcMinute));
 
+  // 使用 sweph-wasm 的函数计算儒略日 (UT)
   const jd_ut = swe.swe_julday(
     utcDate.getUTCFullYear(),
     utcDate.getUTCMonth() + 1,
@@ -75,13 +72,15 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
     swe.SE_GREG_CAL
   );
 
+  // 计算宫位和四轴 (上升点/天顶) - 使用权威的 Placidus 宫位制 ('P')
   const houses = swe.swe_houses(jd_ut, latitude, longitude, 'P');
   const ascendant = houses.ascmc[0];
   const mc = houses.ascmc[1];
   const houseCusps = houses.cusps;
 
+  // 计算所有行星的位置
   const planets = {};
-  const flags = swe.SEFLG_SPEED;
+  const flags = swe.SEFLG_SPEED; // 请求计算速度，用于判断逆行
 
   for (const [name, id] of Object.entries(PLANET_IDS)) {
     const pos = swe.swe_calc_ut(jd_ut, id, flags);
@@ -127,7 +126,7 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
   };
 }
 
-// --- 5. API 处理器 (这部分无需改动) ---
+// --- 5. API 处理器 ---
 export default async function handler(req, res) {
   try {
     const { year, month, day, hour, minute, city, country, tz } = req.query ?? req.body ?? {};
@@ -148,8 +147,10 @@ export default async function handler(req, res) {
     }
     const { latitude, longitude } = geo[0];
 
+    // 计算本命盘
     const natal = buildChart(year, month, day, hour, minute, latitude, longitude, tzOffset);
 
+    // 计算当前行运盘
     const now = new Date();
     const transits = buildChart(
       now.getFullYear(),
@@ -159,7 +160,7 @@ export default async function handler(req, res) {
       now.getMinutes(),
       latitude,
       longitude,
-      -now.getTimezoneOffset() / 60
+      -now.getTimezoneOffset() / 60 // 当前本地时区
     );
 
     return res.status(200).json({
