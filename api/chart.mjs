@@ -337,7 +337,7 @@ function buildChart(year, month, day, hour, minute, latitude, longitude, tzOffse
 
 export default async function handler(req, res) {
   try {
-    const { year, month, day, hour, minute, city, country, tz } = req.query ?? req.body ?? {};
+    const { year, month, day, hour, minute, city, state, country, tz } = req.query ?? req.body ?? {};
     
     // 参数校验
     const required = { year, month, day, hour, minute, tz };
@@ -365,9 +365,12 @@ export default async function handler(req, res) {
       if (!city || !country) {
         return res.status(400).json({ error: 'Missing required parameter: city or country' });
       }
-      const geo = await getGeocoder().geocode(`${city}, ${country}`);
+      const address = state && `${state}`.trim() !== ''
+        ? `${city}, ${state}, ${country}`
+        : `${city}, ${country}`;
+      const geo = await getGeocoder().geocode(address);
       if (!geo || geo.length === 0) {
-        return res.status(400).json({ error: 'Could not find coordinates for the specified location.' });
+        return res.status(400).json({ error: `Could not find coordinates for the specified location: ${address}` });
       }
       ({ latitude, longitude } = geo[0]);
     }
