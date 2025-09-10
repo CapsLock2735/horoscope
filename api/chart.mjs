@@ -92,13 +92,21 @@ function calculatePlanets(jde) {
   for (const [name, ds] of Object.entries(datasets)) {
     try {
       const planet = new Planet(ds);
-      // VSOP87 返回行星的日心黄道球坐标（日期黄道）
-      const pHelio = planet.position(jde);
-      // 转换为直角坐标
-      const pRect = eclipticSphericalToRectangular(pHelio.lon, pHelio.lat, pHelio.range);
-      // 由日心转地心：行星 - 地球
-      const geoRect = { x: pRect.x - eRect.x, y: pRect.y - eRect.y, z: pRect.z - eRect.z };
-      const geo = rectangularToEclipticSpherical(geoRect.x, geoRect.y, geoRect.z);
+      // 优先使用库提供的地心坐标计算；若不可用则退回到向量法
+      let geo;
+      if (typeof solar.geocentricVSOP87 === 'function') {
+        try {
+          geo = solar.geocentricVSOP87(planet, earth, jde);
+        } catch (_) {
+          // ignore and fall back
+        }
+      }
+      if (!geo) {
+        const pHelio = planet.position(jde);
+        const pRect = eclipticSphericalToRectangular(pHelio.lon, pHelio.lat, pHelio.range);
+        const geoRect = { x: pRect.x - eRect.x, y: pRect.y - eRect.y, z: pRect.z - eRect.z };
+        geo = rectangularToEclipticSpherical(geoRect.x, geoRect.y, geoRect.z);
+      }
       
       // 确保位置数据有效
       if (geo && typeof geo.lon === 'number' && !isNaN(geo.lon)) {
@@ -187,10 +195,17 @@ function calculateAscMc(utcDate, latitude, longitude) {
   
   // 计算 ASC（上升点）
   const latRad = degToRad(latitude);
-  const ascLon = norm360(radToDeg(Math.atan2(
+  let ascLon = norm360(radToDeg(Math.atan2(
     -Math.cos(lstRad),
     Math.sin(oblRad) * Math.tan(latRad) + Math.cos(oblRad) * Math.sin(lstRad)
   )));
+
+  // 选择东方地平（上升点），若计算结果落在对宫附近，则加 180°
+  const diffToDesc = Math.abs(norm360(ascLon + 180) - norm360(lst));
+  const diffToAsc = Math.abs(norm360(ascLon) - norm360(lst + 90));
+  if (diffToDesc < 30 && diffToAsc > diffToDesc) {
+    ascLon = norm360(ascLon + 180);
+  }
 
   return {
     Ascendant: {
