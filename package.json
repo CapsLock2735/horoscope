@@ -2,6 +2,10 @@
   "type": "module",
   "dependencies": {
     "astronomia": "^4.2.0",
-    "node-geocoder": "^4.3.0"
+    "node-geocoder": "^4.3.0",
+    "tz-lookup": "^6.1.25"
+  },
+  "scripts": {
+    "test": "TZ=UTC node --test test/chart.test.mjs && TZ=Asia/Shanghai node --test test/chart.test.mjs && TZ=America/Los_Angeles node --test test/chart.test.mjs"
   }
 }
