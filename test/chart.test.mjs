@@ -23,7 +23,9 @@ function call(params, method = 'GET', body) {
 }
 const birth = f => ({ year: f.local[0], month: f.local[1], day: f.local[2], hour: f.local[3], minute: f.local[4], lat: f.lat, lon: f.lon });
 
-const TOL = { Sun: .03, Moon: .03, Mercury: .03, Venus: .03, Mars: .03, Jupiter: .03, Saturn: .03, Uranus: .03, Neptune: .03, Pluto: .03, NorthNode: .1 };
+// 度。对照完整 Swiss Ephemeris（含 .se1 文件），1920–2030 年 3000 张随机盘实测：所有点最大 0.0006°
+const TOL = { Sun: .001, Moon: .001, Mercury: .001, Venus: .001, Mars: .001, Jupiter: .001, Saturn: .001, Uranus: .001, Neptune: .001, Pluto: .001, NorthNode: .001 };
+const TOL_ANGLE = .001;
 
 for (const f of fixtures) {
   test(`${f.name}: timezone found from location, positions match Swiss Ephemeris`, async () => {
@@ -36,11 +38,11 @@ for (const f of fixtures) {
       assert.ok(diff(n.planets[k].longitude, ref) <= TOL[k], `${k}: api ${n.planets[k].longitude} vs ref ${ref.toFixed(3)}`);
     }
     assert.ok(diff(n.planets.SouthNode.longitude, f.bodies.NorthNode + 180) <= TOL.NorthNode);
-    assert.ok(diff(n.angles.Ascendant.longitude, f.asc) <= .02, `ASC ${n.angles.Ascendant.longitude} vs ${f.asc}`);
-    assert.ok(diff(n.angles.MC.longitude, f.mc) <= .02, `MC ${n.angles.MC.longitude} vs ${f.mc}`);
+    assert.ok(diff(n.angles.Ascendant.longitude, f.asc) <= TOL_ANGLE, `ASC ${n.angles.Ascendant.longitude} vs ${f.asc}`);
+    assert.ok(diff(n.angles.MC.longitude, f.mc) <= TOL_ANGLE, `MC ${n.angles.MC.longitude} vs ${f.mc}`);
     if (f.placidus) {
       assert.equal(body.analysis.houseSystem, 'placidus');
-      n.houses.forEach((h, i) => assert.ok(diff(h.cusp, f.placidus[i]) <= .05, `cusp ${i + 1}: ${h.cusp} vs ${f.placidus[i].toFixed(3)}`));
+      n.houses.forEach((h, i) => assert.ok(diff(h.cusp, f.placidus[i]) <= TOL_ANGLE, `cusp ${i + 1}: ${h.cusp} vs ${f.placidus[i].toFixed(3)}`));
     } else {
       assert.equal(body.analysis.houseSystem, 'whole');
       assert.ok(n.chartInfo.warnings.some(w => w.includes('Placidus')));

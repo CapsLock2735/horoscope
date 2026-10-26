@@ -2,13 +2,21 @@
 
 Local birth time -> UTC uses Python's zoneinfo, independently of the API's Intl code,
 so a timezone bug in the API cannot hide behind the same bug in the reference.
-Run: python3 test/make_fixtures.py > test/fixtures.json
+Needs the Swiss Ephemeris data files sepl_18.se1 and semo_18.se1 (github.com/aloistr/swisseph, ephe/).
+Run: SE_EPHE_PATH=/path/to/ephe python3 test/make_fixtures.py > test/fixtures.json
+Without the files Swiss Ephemeris falls back to Moshier mode, whose true node is off by up to ~1',
+so the script refuses to run instead of writing weaker fixtures.
 """
-import json, datetime
+import json, datetime, os, sys
 from zoneinfo import ZoneInfo
 import swisseph as swe
 
-FL = swe.FLG_MOSEPH
+if not os.environ.get('SE_EPHE_PATH'):
+    sys.exit('Set SE_EPHE_PATH to the folder holding sepl_18.se1 and semo_18.se1')
+swe.set_ephe_path(os.environ['SE_EPHE_PATH'])
+FL = swe.FLG_SWIEPH
+if not swe.calc_ut(2451545.0, swe.MOON, FL)[1] & swe.FLG_SWIEPH:
+    sys.exit('Swiss Ephemeris data files not found in SE_EPHE_PATH')
 BODIES = {'Sun': swe.SUN, 'Moon': swe.MOON, 'Mercury': swe.MERCURY, 'Venus': swe.VENUS, 'Mars': swe.MARS,
           'Jupiter': swe.JUPITER, 'Saturn': swe.SATURN, 'Uranus': swe.URANUS, 'Neptune': swe.NEPTUNE,
           'Pluto': swe.PLUTO, 'NorthNode': swe.TRUE_NODE}

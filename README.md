@@ -1,7 +1,7 @@
 # horoscope
 
 `GET` or `POST /api/chart` returns a tropical natal chart, a transit chart and their aspects.
-Positions agree with Swiss Ephemeris to within 0.02° (see `npm test`).
+For dates from 1920 to 2030, every position agrees with the full Swiss Ephemeris to within 2″ (see [Accuracy](#accuracy)).
 
 ## Parameters
 
@@ -39,6 +39,35 @@ Positions agree with Swiss Ephemeris to within 0.02° (see `npm test`).
 
 CORS is open (`CORS_ORIGIN` overrides `*`).
 
+## Accuracy
+
+Positions are apparent geocentric longitudes referred to the true equinox of date. This is what Swiss Ephemeris returns by default, and what astrology software shows. Planets are corrected for light-time, annual aberration and nutation. The Moon uses ELP/MPP02.
+
+Measured against the full Swiss Ephemeris (pyswisseph 2.10 with the data files `sepl_18.se1` and `semo_18.se1`) on 3,000 random charts from 1920 to 2030, latitudes −55° to 62°:
+
+| Point | Largest difference | Mean |
+|---|---|---|
+| Sun, Moon, Mercury to Saturn, Pluto, true node | 0.0006° (2″) | ≤ 0.0002° |
+| Uranus, Neptune | 0.0005° (2″) | 0.0001° |
+| Ascendant, MC, Placidus cusps | 0.0003° (1″) | < 0.0001° |
+
+None of the 3,000 charts put a body in a different sign, or in a different Placidus house. Retrograde stations and new and full moons fall within a minute of Swiss Ephemeris.
+
+To reproduce, download the two data files from [github.com/aloistr/swisseph](https://github.com/aloistr/swisseph/tree/master/ephe) and run:
+
+```bash
+SE_EPHE_PATH=/path/to/ephe python3 test/compare_swisseph.py 3000 1920 2030
+```
+
+Without `SE_EPHE_PATH`, Swiss Ephemeris quietly falls back to its built-in Moshier mode, and the script reports this. In Moshier mode its true node is up to about 1′ away from the full ephemeris, so a comparison against it looks worse than it is.
+
+Two limits:
+
+- **After 2030 the Moon drifts by up to 9″.** Nothing else changes. The cause is ΔT, the gap between clock time and the time the planets follow. Nobody knows its future value, so each library predicts it. Up to 2030, astronomia and Swiss Ephemeris agree to within 1 second. By 2040 astronomia predicts 85 s and Swiss Ephemeris 72 s. The Moon moves 0.5″ to 0.7″ a second, so 13 seconds is 7″ to 9″.
+- Pluto uses Meeus chapter 37, which is valid from 1885 to 2099.
+
+Longitudes and cusps are returned with 4 decimals (0.0001° ≈ 0.4″). `degree` is truncated to whole arcminutes.
+
 ## Tests
 
 ```bash
@@ -47,4 +76,6 @@ npm test
 
 Runs the suite three times, with the server clock set to UTC, Shanghai and Los Angeles. A chart must not depend on where the server runs.
 
-`test/fixtures.json` is generated with `python3 test/make_fixtures.py` (needs `pip install pyswisseph`). The script converts birth times to UTC with Python's `zoneinfo`, independently of the API's own timezone code.
+Positions must match the fixtures to within 0.001°.
+
+`test/fixtures.json` is generated with `SE_EPHE_PATH=/path/to/ephe python3 test/make_fixtures.py > test/fixtures.json`. It needs `pip install pyswisseph` and the same two data files. Without them the script stops instead of writing weaker Moshier-mode fixtures. It converts birth times to UTC with Python's `zoneinfo`, independently of the API's own timezone code.
